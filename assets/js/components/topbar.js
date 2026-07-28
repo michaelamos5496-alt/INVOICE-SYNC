@@ -3,16 +3,26 @@
  * for the shared topbar partial (components/topbar.html).
  */
 import { STORAGE_KEYS } from '../config/constants.js';
-import { storage } from '../services/storage.service.js';
 import { api } from '../services/api.service.js';
 import { NAV_ITEMS_FLAT } from '../config/nav.config.js';
-import { debounce } from '../utils/helpers.js';
+import { debounce, escapeHTML } from '../utils/helpers.js';
 import { timeAgo } from '../utils/formatters.js';
 
 /** Applies the persisted theme before first paint is handled inline in
  *  each page's <head> (see the tiny inline script in pages/*.html) to
  *  avoid a flash of the wrong theme. This function only wires the toggle
- *  control once the DOM/topbar partial is ready. */
+ *  control once the DOM/topbar partial is ready.
+ *
+ *  The theme is written with a plain `localStorage.setItem` — NOT
+ *  `storage.set()` — on purpose. `storage.set()` JSON-encodes its value
+ *  (so 'dark' becomes the 5-character string `"dark"` on disk), but
+ *  every page's pre-paint script does a raw, un-parsed
+ *  `localStorage.getItem('invsync.theme') === 'dark'` check for speed
+ *  (it runs before any module has loaded). Writing through storage.set()
+ *  here would make that comparison silently fail on every subsequent
+ *  page load — the toggle would appear to work on the current page,
+ *  then revert on the next navigation. Read and write must use the same
+ *  raw-string format. */
 export function initThemeToggle() {
   const toggle = document.getElementById('theme-toggle');
   if (!toggle) return;
@@ -25,7 +35,7 @@ export function initThemeToggle() {
   applyIcon();
   toggle.addEventListener('click', () => {
     const isDark = document.documentElement.classList.toggle('dark');
-    storage.set(STORAGE_KEYS.THEME, isDark ? 'dark' : 'light');
+    localStorage.setItem(STORAGE_KEYS.THEME, isDark ? 'dark' : 'light');
     applyIcon();
   });
 }
@@ -51,12 +61,12 @@ export function initGlobalSearch() {
     const all = [...navMatches, ...productMatches];
     results.innerHTML = all.length
       ? all.map((r) => `
-          <a href="${r.href}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--surface-sunken)] text-sm">
+          <a href="${escapeHTML(r.href)}" class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[var(--surface-sunken)] text-sm">
             <i class="fa-solid ${r.icon} text-[var(--text-muted)] w-4 text-center"></i>
-            <span class="flex-1">${r.label}${r.sub ? ` <span class="text-[var(--text-muted)]">· ${r.sub}</span>` : ''}</span>
+            <span class="flex-1">${escapeHTML(r.label)}${r.sub ? ` <span class="text-[var(--text-muted)]">· ${escapeHTML(r.sub)}</span>` : ''}</span>
             <span class="text-xs text-[var(--text-muted)]">${r.group}</span>
           </a>`).join('')
-      : `<p class="px-3 py-6 text-center text-sm text-[var(--text-muted)]">No results for "${term}"</p>`;
+      : `<p class="px-3 py-6 text-center text-sm text-[var(--text-muted)]">No results for "${escapeHTML(term)}"</p>`;
     results.classList.remove('hidden');
   }, 200);
 
@@ -90,8 +100,8 @@ export async function initNotificationBell() {
           <div class="flex items-start gap-3 px-4 py-3 border-b last:border-0" style="border-color: var(--border-subtle)">
             <span class="mt-1 w-2 h-2 rounded-full shrink-0 ${n.read ? 'bg-transparent' : 'bg-primary-500'}"></span>
             <div>
-              <p class="text-sm font-medium">${n.title}</p>
-              <p class="text-xs text-[var(--text-secondary)]">${n.message}</p>
+              <p class="text-sm font-medium">${escapeHTML(n.title)}</p>
+              <p class="text-xs text-[var(--text-secondary)]">${escapeHTML(n.message)}</p>
               <p class="text-[11px] text-[var(--text-muted)] mt-1">${timeAgo(n.createdAt)}</p>
             </div>
           </div>`).join('')

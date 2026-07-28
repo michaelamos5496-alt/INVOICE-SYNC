@@ -11,7 +11,6 @@ import { initTabs } from '../components/tabs.js';
 import { toast } from '../components/toast.js';
 import { modal } from '../components/modal.js';
 import { STORAGE_KEYS } from '../config/constants.js';
-import { storage } from '../services/storage.service.js';
 import { escapeHTML } from '../utils/helpers.js';
 
 const CURRENCIES = ['GHS', 'USD', 'NGN', 'EUR', 'GBP'];
@@ -151,7 +150,10 @@ function renderPreferencesForm() {
 
   document.getElementById('f-dark-mode').addEventListener('change', (e) => {
     document.documentElement.classList.toggle('dark', e.target.checked);
-    storage.set(STORAGE_KEYS.THEME, e.target.checked ? 'dark' : 'light');
+    // Raw write, not storage.set() — must match the raw read every
+    // page's pre-paint <head> script does. See topbar.js's
+    // initThemeToggle() for the full explanation.
+    localStorage.setItem(STORAGE_KEYS.THEME, e.target.checked ? 'dark' : 'light');
   });
 
   document.getElementById('save-preferences').addEventListener('click', () => {

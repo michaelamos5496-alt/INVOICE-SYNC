@@ -2,15 +2,108 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="refresh" content="0; url=/pages/dashboard.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>InvSync</title>
   <meta name="description" content="Unified inventory management for physical and online retail." />
   <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
+  <meta name="theme-color" content="#4f46e5" />
   <link rel="canonical" href="/pages/dashboard.html" />
-  <script>window.location.replace('/pages/dashboard.html');</script>
+
+  <script>
+    if (localStorage.getItem('invsync.theme') === 'dark' ||
+        (!localStorage.getItem('invsync.theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/tailwind.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+
+  <style>
+    /* Splash-specific: not part of the shared design system since no
+       other page needs a full-bleed centered boot screen or an
+       indeterminate progress bar. */
+    .splash {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 1.25rem;
+      background: var(--surface-base);
+      transition: opacity 400ms ease;
+    }
+    .splash.leaving { opacity: 0; }
+
+    .splash-mark {
+      width: 4.5rem; height: 4.5rem;
+      border-radius: 1.25rem;
+      background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-700));
+      display: grid; place-items: center;
+      box-shadow: var(--shadow-lg);
+      animation: splash-pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes splash-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.06); }
+    }
+
+    .splash-bar {
+      width: 10rem; height: 0.25rem;
+      border-radius: 999px;
+      background: var(--surface-sunken);
+      overflow: hidden;
+    }
+    .splash-bar::after {
+      content: "";
+      display: block;
+      width: 40%; height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--color-primary-500), var(--color-primary-400));
+      animation: splash-slide 1.1s ease-in-out infinite;
+    }
+    @keyframes splash-slide {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(360%); }
+    }
+  </style>
 </head>
-<body>
-  <p>Redirecting to <a href="/pages/dashboard.html">the dashboard</a>…</p>
+<body class="font-sans antialiased">
+
+  <div id="splash" class="splash" role="status" aria-live="polite" aria-label="Loading InvSync">
+    <span class="splash-mark">
+      <i class="fa-solid fa-cubes text-white text-2xl" aria-hidden="true"></i>
+    </span>
+    <div class="text-center">
+      <p class="font-display text-2xl font-bold" style="color: var(--text-primary)">InvSync</p>
+      <p class="text-sm mt-1" style="color: var(--text-secondary)">Unified Inventory Management</p>
+    </div>
+    <div class="splash-bar"></div>
+  </div>
+
+  <noscript>
+    <p style="text-align:center; margin-top: 2rem;">
+      <a href="/pages/dashboard.html">Continue to the dashboard</a>
+    </p>
+  </noscript>
+
+  <script>
+    const MIN_DISPLAY_MS = 1100;
+    const started = Date.now();
+
+    function goToDashboard() {
+      const elapsed = Date.now() - started;
+      const remaining = Math.max(0, MIN_DISPLAY_MS - elapsed);
+      setTimeout(() => {
+        document.getElementById('splash').classList.add('leaving');
+        setTimeout(() => window.location.replace('/pages/dashboard.html'), 400);
+      }, remaining);
+    }
+
+    if (document.readyState === 'complete') goToDashboard();
+    else window.addEventListener('load', goToDashboard);
+  </script>
 </body>
 </html>
