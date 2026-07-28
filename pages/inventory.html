@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inventory · InvSync</title>
+
+  <meta name="description" content="Stock levels, adjustments, stock counts and movement history — one number, shared everywhere." />
+  <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/assets/img/favicon.svg" />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <script>
+    if (localStorage.getItem('invsync.theme') === 'dark' ||
+        (!localStorage.getItem('invsync.theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/tailwind.css" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+  <link rel="stylesheet" href="/assets/css/components.css" />
+</head>
+<body data-page="inventory" class="bg-surface-base text-[var(--text-primary)] font-sans antialiased">
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+
+  <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/40 z-30 lg:hidden"></div>
+
+  <aside id="sidebar"
+    class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-out border-r"
+    style="border-color: var(--border-subtle); background: var(--surface-raised);">
+    <div id="sidebar-mount" class="h-full"></div>
+  </aside>
+
+  <div class="lg:pl-64 min-h-screen flex flex-col">
+    <div id="topbar-mount"></div>
+
+    <main id="main-content" class="flex-1 p-4 sm:p-6 lg:p-8 route-enter space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 class="font-display text-2xl font-bold">Inventory</h1>
+          <p class="text-sm text-[var(--text-secondary)] mt-1">Stock levels, adjustments, stock counts and movement history — one number, shared everywhere.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button id="export-csv" class="btn btn-secondary btn-sm"><i class="fa-solid fa-file-export"></i> Export CSV</button>
+          <label class="btn btn-secondary btn-sm cursor-pointer">
+            <i class="fa-solid fa-file-import"></i> Import CSV
+            <input id="import-csv-input" type="file" accept=".csv" class="hidden" />
+          </label>
+        </div>
+      </div>
+
+      <div class="card p-4 space-y-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="relative flex-1 min-w-[220px]">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm"></i>
+            <input id="inventory-search" class="input pl-9" placeholder="Search by name, SKU or barcode…" />
+          </div>
+          <select id="filter-category" class="select w-auto"></select>
+          <select id="filter-status" class="select w-auto">
+            <option value="">All Stock Statuses</option>
+            <option value="in_stock">In Stock</option>
+            <option value="low_stock">Low Stock</option>
+            <option value="out_of_stock">Out of Stock</option>
+          </select>
+        </div>
+        <div class="relative max-w-md">
+          <i class="fa-solid fa-barcode absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm"></i>
+          <input id="barcode-scan" class="input pl-9 font-mono" placeholder="Scan or type a barcode / SKU, then press Enter…" />
+        </div>
+      </div>
+
+      <div class="card p-5">
+        <div id="inventory-table"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast-root"></div>
+
+  <script type="module">
+    import { bootstrapApp } from '/assets/js/app.js';
+    import { initInventoryPage } from '/assets/js/pages/inventory.page.js';
+
+    await bootstrapApp();
+    await initInventoryPage();
+  </script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!--
+  Topbar partial — fetched and injected into #topbar-mount by app.js.
+  Contains the mobile menu trigger, global search, quick-action, theme
+  toggle, and notification bell. Behavior is wired by
+  assets/js/components/topbar.js after injection.
+-->
+<header class="glass sticky top-0 z-20 flex items-center gap-3 h-16 px-4 sm:px-6 lg:px-8">
+  <button id="sidebar-open" class="lg:hidden w-9 h-9 rounded-lg grid place-items-center hover:bg-[var(--surface-sunken)]" aria-label="Open menu">
+    <i class="fa-solid fa-bars"></i>
+  </button>
+
+  <div id="global-search-wrap" class="relative flex-1 max-w-md">
+    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm"></i>
+    <input id="global-search" type="text" placeholder="Search products, orders, customers…"
+      class="w-full h-10 pl-9 pr-3 rounded-lg text-sm bg-[var(--surface-sunken)] border border-transparent focus:border-primary-400 focus:bg-[var(--surface-raised)] outline-none transition-colors" />
+    <div id="global-search-results" class="hidden absolute mt-2 w-full card p-2 shadow-lg z-30 max-h-80 overflow-y-auto"></div>
+  </div>
+
+  <div class="flex items-center gap-2 ml-auto">
+    <a href="pos.html" class="hidden sm:inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold shadow-sm transition-colors">
+      <i class="fa-solid fa-cash-register"></i> New Sale
+    </a>
+
+    <button id="theme-toggle" class="w-9 h-9 rounded-lg grid place-items-center hover:bg-[var(--surface-sunken)]" aria-label="Toggle theme">
+      <i class="fa-solid fa-moon"></i>
+    </button>
+
+    <div id="notif-wrap" class="relative">
+      <button id="notif-bell" class="relative w-9 h-9 rounded-lg grid place-items-center hover:bg-[var(--surface-sunken)]" aria-label="Notifications">
+        <i class="fa-solid fa-bell"></i>
+        <span id="notif-badge" class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-danger-500 text-white text-[10px] font-bold grid place-items-center">0</span>
+      </button>
+      <div id="notif-panel" class="hidden absolute right-0 mt-2 w-80 card p-0 shadow-lg z-30 overflow-hidden">
+        <div class="px-4 py-3 border-b font-semibold text-sm" style="border-color: var(--border-subtle)">Notifications</div>
+        <div class="max-h-96 overflow-y-auto"></div>
+        <a href="notifications.html" class="block text-center text-sm font-medium text-primary-600 py-2.5 border-t hover:bg-[var(--surface-sunken)]" style="border-color: var(--border-subtle)">View all</a>
+      </div>
+    </div>
+  </div>
+</header>

@@ -1,0 +1,79 @@
+/* ==========================================================================
+   DESIGN TOKENS
+   Single source of truth for color, spacing, radius, shadow and motion.
+   Both the Tailwind CDN config (see /assets/js/config/tailwind.init.js)
+   and hand-written CSS below read from these custom properties so that
+   theme changes never require touching component markup.
+   ========================================================================== */
+
+:root {
+  /* ---- Brand palette (Indigo/Violet — Linear/Stripe inspired) ---- */
+  --color-primary-50:  #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+
+  /* ---- Semantic status colors ---- */
+  --color-success-500: #10b981;
+  --color-success-100: #d1fae5;
+  --color-warning-500: #f59e0b;
+  --color-warning-100: #fef3c7;
+  --color-danger-500:  #ef4444;
+  --color-danger-100:  #fee2e2;
+  --color-info-500:    #3b82f6;
+  --color-info-100:    #dbeafe;
+
+  /* ---- Neutral surface scale (Light mode default) ---- */
+  --surface-base:      #f8fafc;
+  --surface-raised:    #ffffff;
+  --surface-sunken:    #f1f5f9;
+  --surface-overlay:   rgba(15, 23, 42, 0.55);
+  --border-subtle:     #e2e8f0;
+  --border-strong:     #cbd5e1;
+  --text-primary:      #0f172a;
+  --text-secondary:    #475569;
+  --text-muted:        #94a3b8;
+
+  /* ---- Elevation ---- */
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+  --shadow-md: 0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 4px -2px rgb(15 23 42 / 0.04);
+  --shadow-lg: 0 12px 24px -8px rgb(15 23 42 / 0.12), 0 4px 8px -4px rgb(15 23 42 / 0.06);
+  --shadow-glass: 0 8px 32px 0 rgb(15 23 42 / 0.10);
+
+  /* ---- Radius scale ---- */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+
+  /* ---- Typography ---- */
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
+}
+
+/* ---- Dark mode overrides (class strategy, toggled on <html>) ---- */
+html.dark {
+  --surface-base:      #0b0f19;
+  --surface-raised:    #131826;
+  --surface-sunken:    #0f1420;
+  --surface-overlay:   rgba(0, 0, 0, 0.6);
+  --border-subtle:     #1f2937;
+  --border-strong:     #2d3748;
+  --text-primary:      #f1f5f9;
+  --text-secondary:    #94a3b8;
+  --text-muted:        #64748b;
+
+  --shadow-glass: 0 8px 32px 0 rgb(0 0 0 / 0.35);
+}

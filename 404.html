@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Page Not Found · InvSync</title>
+  <meta name="description" content="The page you're looking for doesn't exist." />
+  <meta name="robots" content="noindex" />
+  <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <script>
+    if (localStorage.getItem('invsync.theme') === 'dark' ||
+        (!localStorage.getItem('invsync.theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/tailwind.css" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+  <link rel="stylesheet" href="/assets/css/components.css" />
+</head>
+<body class="bg-surface-base text-[var(--text-primary)] font-sans antialiased min-h-screen grid place-items-center p-6">
+
+  <div class="max-w-md w-full text-center space-y-6">
+    <span class="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 items-center justify-center shadow-lg mx-auto">
+      <i class="fa-solid fa-cubes text-white text-2xl"></i>
+    </span>
+    <div>
+      <p class="font-display text-6xl font-bold text-primary-600">404</p>
+      <h1 class="font-display text-xl font-semibold mt-2">Page not found</h1>
+      <p class="text-sm text-[var(--text-secondary)] mt-2">The page you're looking for doesn't exist or may have moved.</p>
+    </div>
+    <a href="/pages/dashboard.html" class="btn btn-primary inline-flex"><i class="fa-solid fa-gauge-high"></i> Back to Dashboard</a>
+  </div>
+
+</body>
+</html>

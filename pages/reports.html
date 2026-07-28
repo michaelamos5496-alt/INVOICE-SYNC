@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reports · InvSync</title>
+
+  <meta name="description" content="Sales, inventory, profit, customer, employee, purchase and supplier reports." />
+  <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/assets/img/favicon.svg" />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <script>
+    if (localStorage.getItem('invsync.theme') === 'dark' ||
+        (!localStorage.getItem('invsync.theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/tailwind.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+  <link rel="stylesheet" href="/assets/css/components.css" />
+</head>
+<body data-page="reports" class="bg-surface-base text-[var(--text-primary)] font-sans antialiased">
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+
+  <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/40 z-30 lg:hidden"></div>
+
+  <aside id="sidebar"
+    class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-out border-r"
+    style="border-color: var(--border-subtle); background: var(--surface-raised);">
+    <div id="sidebar-mount" class="h-full"></div>
+  </aside>
+
+  <div class="lg:pl-64 min-h-screen flex flex-col">
+    <div id="topbar-mount"></div>
+
+    <main id="main-content" class="flex-1 p-4 sm:p-6 lg:p-8 route-enter space-y-6">
+      <div>
+        <h1 class="font-display text-2xl font-bold">Reports</h1>
+        <p class="text-sm text-[var(--text-secondary)] mt-1">Sales, inventory, profit, customer, employee, purchase and supplier reports.</p>
+      </div>
+
+      <div class="card p-4">
+        <div id="reports-tabs">
+          <div class="tabs-list flex-wrap gap-1">
+            <button class="tab-btn active" data-tab="sales" type="button">Sales</button>
+            <button class="tab-btn" data-tab="inventory" type="button">Inventory</button>
+            <button class="tab-btn" data-tab="profit" type="button">Profit</button>
+            <button class="tab-btn" data-tab="customers" type="button">Customers</button>
+            <button class="tab-btn" data-tab="employees" type="button">Employees</button>
+            <button class="tab-btn" data-tab="purchases" type="button">Purchases</button>
+            <button class="tab-btn" data-tab="suppliers" type="button">Suppliers</button>
+          </div>
+
+          <!-- Sales Report -->
+          <div data-tab-panel="sales" class="pt-5 space-y-5">
+            <div id="sales-report-stats" class="grid sm:grid-cols-3 gap-4"></div>
+            <div class="card p-5">
+              <h2 class="font-display font-semibold mb-4">Revenue Trend (30 days)</h2>
+              <div class="h-64"><canvas id="sales-report-chart"></canvas></div>
+            </div>
+            <div id="sales-report-breakdown" class="card p-5 grid sm:grid-cols-2 gap-6"></div>
+          </div>
+
+          <!-- Inventory Report -->
+          <div data-tab-panel="inventory" class="hidden pt-5 space-y-5">
+            <div id="inventory-report-stats" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+            <div class="card p-5">
+              <h2 class="font-display font-semibold mb-4">Stock Value by Category</h2>
+              <div class="h-64"><canvas id="inventory-report-chart"></canvas></div>
+            </div>
+            <div class="card p-5"><div id="inventory-report-table"></div></div>
+          </div>
+
+          <!-- Profit Report -->
+          <div data-tab-panel="profit" class="hidden pt-5 space-y-5">
+            <div id="profit-report-stats" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+            <div class="card p-5">
+              <h2 class="font-display font-semibold mb-4">Daily Profit (30 days)</h2>
+              <div class="h-64"><canvas id="profit-report-chart"></canvas></div>
+            </div>
+            <div class="card p-5">
+              <h2 class="font-display font-semibold mb-4">Profit by Product</h2>
+              <div id="profit-report-table"></div>
+            </div>
+          </div>
+
+          <!-- Customer Report -->
+          <div data-tab-panel="customers" class="hidden pt-5 space-y-5">
+            <div id="customer-report-stats" class="grid sm:grid-cols-3 gap-4"></div>
+            <div class="card p-5">
+              <h2 class="font-display font-semibold mb-4">Top Customers</h2>
+              <div id="customer-report-table"></div>
+            </div>
+          </div>
+
+          <!-- Employee Report -->
+          <div data-tab-panel="employees" class="hidden pt-5 space-y-5">
+            <div class="card p-5">
+              <h2 class="font-display font-semibold mb-4">Revenue by Staff Member (30 days)</h2>
+              <div class="h-64"><canvas id="employee-report-chart"></canvas></div>
+            </div>
+            <div class="card p-5"><div id="employee-report-table"></div></div>
+          </div>
+
+          <!-- Purchase Report -->
+          <div data-tab-panel="purchases" class="hidden pt-5 space-y-5">
+            <div id="purchase-report-stats" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+            <div class="card p-5"><div id="purchase-report-table"></div></div>
+          </div>
+
+          <!-- Supplier Report -->
+          <div data-tab-panel="suppliers" class="hidden pt-5 space-y-5">
+            <div class="card p-5">
+              <h2 class="font-display font-semibold mb-4">Spend by Supplier</h2>
+              <div class="h-64"><canvas id="supplier-report-chart"></canvas></div>
+            </div>
+            <div class="card p-5"><div id="supplier-report-table"></div></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast-root"></div>
+
+  <script type="module">
+    import { bootstrapApp } from '/assets/js/app.js';
+    import { initReportsPage } from '/assets/js/pages/reports.page.js';
+
+    await bootstrapApp();
+    await initReportsPage();
+  </script>
+</body>
+</html>

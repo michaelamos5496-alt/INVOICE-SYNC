@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UI Design System · InvSync</title>
+
+  <meta name="description" content="Live reference for every reusable UI component InvSync is built from." />
+  <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/assets/img/favicon.svg" />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <script>
+    if (localStorage.getItem('invsync.theme') === 'dark' ||
+        (!localStorage.getItem('invsync.theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/tailwind.css" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+  <link rel="stylesheet" href="/assets/css/components.css" />
+</head>
+<body data-page="design-system" class="bg-surface-base text-[var(--text-primary)] font-sans antialiased">
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+
+  <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/40 z-30 lg:hidden"></div>
+  <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-out border-r"
+    style="border-color: var(--border-subtle); background: var(--surface-raised);">
+    <div id="sidebar-mount" class="h-full"></div>
+  </aside>
+
+  <div class="lg:pl-64 min-h-screen flex flex-col">
+    <div id="topbar-mount"></div>
+
+    <main id="main-content" class="flex-1 p-4 sm:p-6 lg:p-8 route-enter space-y-10 max-w-6xl">
+      <div>
+        <span class="badge badge-info mb-2"><i class="fa-solid fa-swatchbook"></i> Phase 2</span>
+        <h1 class="font-display text-2xl font-bold">UI Design System</h1>
+        <p class="text-sm text-[var(--text-secondary)] mt-1">Live reference for every reusable component the app is built from. Not part of the primary navigation — bookmark this page.</p>
+      </div>
+
+      <!-- Buttons -->
+      <section class="card p-6">
+        <h2 class="font-display font-semibold mb-4">Buttons</h2>
+        <div class="flex flex-wrap items-center gap-3">
+          <button class="btn btn-primary"><i class="fa-solid fa-plus"></i> Primary</button>
+          <button class="btn btn-secondary">Secondary</button>
+          <button class="btn btn-outline">Outline</button>
+          <button class="btn btn-ghost">Ghost</button>
+          <button class="btn btn-danger"><i class="fa-solid fa-trash"></i> Danger</button>
+          <button class="btn btn-primary" disabled>Disabled</button>
+        </div>
+        <div class="flex flex-wrap items-center gap-3 mt-4">
+          <button class="btn btn-primary btn-sm">Small</button>
+          <button class="btn btn-primary">Default</button>
+          <button class="btn btn-primary btn-lg">Large</button>
+          <button class="btn btn-secondary btn-icon" aria-label="Icon button"><i class="fa-solid fa-ellipsis"></i></button>
+        </div>
+      </section>
+
+      <!-- Badges -->
+      <section class="card p-6">
+        <h2 class="font-display font-semibold mb-4">Badges</h2>
+        <div class="flex flex-wrap gap-2">
+          <span class="badge badge-success"><span class="badge-dot"></span> In Stock</span>
+          <span class="badge badge-warning"><span class="badge-dot"></span> Low Stock</span>
+          <span class="badge badge-danger"><span class="badge-dot"></span> Out of Stock</span>
+          <span class="badge badge-info"><span class="badge-dot"></span> Processing</span>
+          <span class="badge badge-neutral">Draft</span>
+        </div>
+      </section>
+
+      <!-- Alerts -->
+      <section class="card p-6 space-y-3">
+        <h2 class="font-display font-semibold mb-1">Alerts</h2>
+        <div class="alert alert-success"><i class="fa-solid fa-circle-check mt-0.5"></i><span>Purchase order #PO-1029 was received and stock updated.</span></div>
+        <div class="alert alert-warning"><i class="fa-solid fa-triangle-exclamation mt-0.5"></i><span>3 products are running low on stock.</span></div>
+        <div class="alert alert-danger"><i class="fa-solid fa-circle-exclamation mt-0.5"></i><span>Payment failed for order #ONL-1055.</span></div>
+        <div class="alert alert-info"><i class="fa-solid fa-circle-info mt-0.5"></i><span>A new online order was just synced from the store.</span></div>
+      </section>
+
+      <!-- Forms -->
+      <section class="card p-6">
+        <h2 class="font-display font-semibold mb-4">Form Controls</h2>
+        <div class="grid sm:grid-cols-2 gap-5">
+          <div>
+            <label class="field-label">Product name</label>
+            <input class="input" type="text" placeholder="e.g. Aurora Wireless Earbuds Pro" />
+            <p class="field-hint">Shown to customers on receipts and the online store.</p>
+          </div>
+          <div>
+            <label class="field-label">Category</label>
+            <select class="select">
+              <option>Electronics</option>
+              <option>Apparel</option>
+              <option>Home & Living</option>
+            </select>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="field-label">Description</label>
+            <textarea class="textarea" placeholder="Short product description…"></textarea>
+          </div>
+          <div>
+            <label class="field-label">Selling price</label>
+            <input class="input" type="number" placeholder="0.00" />
+            <p class="field-error">Selling price is required.</p>
+          </div>
+          <div class="flex flex-col justify-center gap-3">
+            <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="checkbox" checked /> Track inventory for this product</label>
+            <label class="flex items-center gap-2 text-sm"><input type="radio" name="ds-radio" class="radio" checked /> Ships from Main Store</label>
+            <label class="flex items-center gap-2 text-sm"><input type="radio" name="ds-radio" class="radio" /> Ships from Warehouse</label>
+            <label class="flex items-center gap-3 text-sm">
+              <span class="toggle"><input type="checkbox" checked /><span class="toggle-track"></span></span>
+              Publish to online store
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tabs + Dropdown -->
+      <section class="card p-6">
+        <h2 class="font-display font-semibold mb-4">Tabs &amp; Dropdown</h2>
+        <div id="ds-tabs">
+          <div class="tabs-list mb-4">
+            <button class="tab-btn active" data-tab="details">Details</button>
+            <button class="tab-btn" data-tab="variants">Variants</button>
+            <button class="tab-btn" data-tab="history">History</button>
+          </div>
+          <div data-tab-panel="details" class="text-sm text-[var(--text-secondary)]">Core product details panel.</div>
+          <div data-tab-panel="variants" class="hidden text-sm text-[var(--text-secondary)]">Color/size variant matrix panel.</div>
+          <div data-tab-panel="history" class="hidden text-sm text-[var(--text-secondary)]">Stock movement timeline panel.</div>
+        </div>
+        <div class="mt-5">
+          <button id="ds-dropdown-trigger" class="btn btn-secondary btn-sm">Row actions <i class="fa-solid fa-chevron-down text-xs"></i></button>
+        </div>
+      </section>
+
+      <!-- Modal + Toast -->
+      <section class="card p-6">
+        <h2 class="font-display font-semibold mb-4">Modals &amp; Toasts</h2>
+        <div class="flex flex-wrap gap-3">
+          <button id="ds-open-modal" class="btn btn-secondary">Open modal</button>
+          <button id="ds-confirm-modal" class="btn btn-secondary">Open confirm dialog</button>
+          <button id="ds-toast-success" class="btn btn-outline">Success toast</button>
+          <button id="ds-toast-danger" class="btn btn-outline">Danger toast</button>
+        </div>
+      </section>
+
+      <!-- Stat cards -->
+      <section>
+        <h2 class="font-display font-semibold mb-4">Stat Cards</h2>
+        <div id="ds-stat-cards" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+      </section>
+
+      <!-- Data table -->
+      <section class="card p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-display font-semibold">Data Table</h2>
+          <input id="ds-table-search" class="input max-w-xs" placeholder="Search products…" />
+        </div>
+        <div id="ds-data-table"></div>
+      </section>
+
+      <!-- Empty state -->
+      <section class="card p-2">
+        <div id="ds-empty-state"></div>
+      </section>
+
+      <!-- Skeleton loaders -->
+      <section class="card p-6">
+        <h2 class="font-display font-semibold mb-4">Skeleton Loaders</h2>
+        <div id="ds-skeleton-cards" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast-root"></div>
+
+  <script type="module">
+    import { bootstrapApp } from '/assets/js/app.js';
+    import { api } from '/assets/js/services/api.service.js';
+    import { toast } from '/assets/js/components/toast.js';
+    import { modal } from '/assets/js/components/modal.js';
+    import { initTabs } from '/assets/js/components/tabs.js';
+    import { initDropdown } from '/assets/js/components/dropdown.js';
+    import { renderStatCards } from '/assets/js/components/stat-card.js';
+    import { renderEmptyState } from '/assets/js/components/empty-state.js';
+    import { renderSkeletonCards } from '/assets/js/components/skeleton.js';
+    import { DataTable } from '/assets/js/components/table.js';
+    import { formatCurrency } from '/assets/js/utils/formatters.js';
+
+    await bootstrapApp();
+
+    // Tabs
+    initTabs(document.getElementById('ds-tabs'));
+
+    // Dropdown
+    initDropdown(document.getElementById('ds-dropdown-trigger'), [
+      { label: 'Edit', icon: 'fa-pen', onClick: () => toast.info('Edit clicked') },
+      { label: 'Duplicate', icon: 'fa-copy', onClick: () => toast.info('Duplicate clicked') },
+      { divider: true },
+      { label: 'Delete', icon: 'fa-trash', danger: true, onClick: () => toast.danger('Delete clicked') },
+    ]);
+
+    // Modal
+    document.getElementById('ds-open-modal').addEventListener('click', () => {
+      modal.open({
+        title: 'Add Product',
+        bodyHTML: `<p class="text-sm text-[var(--text-secondary)]">This is a reusable modal shell — Phase 4 wires a real product form in here.</p>`,
+        footerHTML: `<button class="btn btn-secondary" data-modal-close>Cancel</button><button class="btn btn-primary">Save</button>`,
+      });
+    });
+    document.getElementById('ds-confirm-modal').addEventListener('click', async () => {
+      const ok = await modal.confirm({ title: 'Delete product?', message: 'This cannot be undone.' });
+      toast[ok ? 'success' : 'info'](ok ? 'Confirmed' : 'Cancelled');
+    });
+
+    // Toasts
+    document.getElementById('ds-toast-success').addEventListener('click', () => toast.success('Product saved successfully.'));
+    document.getElementById('ds-toast-danger').addEventListener('click', () => toast.danger('Something went wrong.'));
+
+    // Stat cards (sample data)
+    renderStatCards(document.getElementById('ds-stat-cards'), [
+      { label: 'Total Products', value: '128', icon: 'fa-box', tone: 'primary', trend: { direction: 'up', value: '+4 this week' } },
+      { label: "Today's Sales", value: formatCurrency(1284.5), icon: 'fa-receipt', tone: 'success', trend: { direction: 'up', value: '+12.4%' } },
+      { label: 'Low Stock', value: '6', icon: 'fa-triangle-exclamation', tone: 'warning' },
+      { label: 'Out of Stock', value: '2', icon: 'fa-circle-xmark', tone: 'danger' },
+    ]);
+
+    // Skeletons (static demo, not tied to a real loading transition)
+    renderSkeletonCards(document.getElementById('ds-skeleton-cards'), { count: 4 });
+
+    // Empty state
+    renderEmptyState(document.getElementById('ds-empty-state'), {
+      icon: 'fa-box-open',
+      title: 'No purchase orders yet',
+      message: 'Create a purchase order to restock from a supplier.',
+      actionLabel: 'New Purchase Order',
+      onAction: () => toast.info('Would open the new purchase order form.'),
+    });
+
+    // Data table bound to real seeded products via api.service.js
+    const table = new DataTable(document.getElementById('ds-data-table'), {
+      columns: [
+        { key: 'name', label: 'Product', sortable: true },
+        { key: 'sku', label: 'SKU', sortable: true },
+        {
+          key: 'stockQuantity', label: 'Stock', sortable: true, align: 'right',
+          render: (row) => `<span class="font-medium">${row.stockQuantity}</span>`,
+        },
+        {
+          key: 'stockStatus', label: 'Status',
+          render: (row) => {
+            const map = { in_stock: 'badge-success', low_stock: 'badge-warning', out_of_stock: 'badge-danger' };
+            const text = { in_stock: 'In Stock', low_stock: 'Low Stock', out_of_stock: 'Out of Stock' };
+            return `<span class="badge ${map[row.stockStatus]}"><span class="badge-dot"></span> ${text[row.stockStatus]}</span>`;
+          },
+        },
+        { key: 'sellingPrice', label: 'Price', align: 'right', render: (row) => formatCurrency(row.sellingPrice) },
+        {
+          key: 'actions', label: '',
+          render: (row) => `<button class="btn btn-ghost btn-sm" data-row-menu="${row.id}"><i class="fa-solid fa-ellipsis"></i></button>`,
+        },
+      ],
+      pageSize: 4,
+      searchKeys: ['name', 'sku'],
+      rowKey: (row) => row.id,
+      emptyState: { icon: 'fa-box', title: 'No products found' },
+    });
+
+    table.setLoading();
+    const products = await api.products.list();
+    table.setData(products);
+
+    document.getElementById('ds-table-search').addEventListener('input', (e) => table.setSearchTerm(e.target.value));
+  </script>
+</body>
+</html>

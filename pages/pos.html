@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>POS · InvSync</title>
+
+  <meta name="description" content="In-store point of sale: cart, barcode scan, discounts, tax and payments." />
+  <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/assets/img/favicon.svg" />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <script>
+    if (localStorage.getItem('invsync.theme') === 'dark' ||
+        (!localStorage.getItem('invsync.theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/tailwind.css" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+  <link rel="stylesheet" href="/assets/css/components.css" />
+
+  <!-- Receipt printing: hide everything except the receipt content when printing. -->
+  <style>
+    @media print {
+      body * { visibility: hidden; }
+      #receipt-print-area, #receipt-print-area * { visibility: visible; }
+      #receipt-print-area { position: absolute; top: 0; left: 0; width: 100%; padding: 1rem; }
+    }
+  </style>
+</head>
+<body data-page="pos" class="bg-surface-base text-[var(--text-primary)] font-sans antialiased">
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+
+  <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/40 z-30 lg:hidden"></div>
+
+  <aside id="sidebar"
+    class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-out border-r"
+    style="border-color: var(--border-subtle); background: var(--surface-raised);">
+    <div id="sidebar-mount" class="h-full"></div>
+  </aside>
+
+  <div class="lg:pl-64 min-h-screen flex flex-col">
+    <div id="topbar-mount"></div>
+
+    <main id="main-content" class="flex-1 p-4 sm:p-6 lg:p-8 route-enter">
+      <div class="grid lg:grid-cols-3 gap-6 items-start">
+        <!-- Product browser -->
+        <div class="lg:col-span-2 space-y-4">
+          <div class="card p-4 space-y-3">
+            <div class="flex flex-col sm:flex-row gap-3">
+              <div class="relative flex-1">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm"></i>
+                <input id="pos-search" class="input pl-9" placeholder="Search products…" />
+              </div>
+              <div class="relative flex-1">
+                <i class="fa-solid fa-barcode absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm"></i>
+                <input id="pos-barcode" class="input pl-9 font-mono" placeholder="Scan barcode / SKU + Enter…" />
+              </div>
+            </div>
+            <div id="pos-category-chips" class="tabs-list !border-none flex-wrap gap-1"></div>
+          </div>
+
+          <div id="pos-product-grid" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3"></div>
+        </div>
+
+        <!-- Cart -->
+        <div class="card p-5 lg:sticky lg:top-20 flex flex-col" style="max-height: calc(100vh - 6rem);">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-display font-semibold">Current Sale</h2>
+            <button id="clear-cart-btn" class="btn btn-ghost btn-sm" title="Clear cart"><i class="fa-solid fa-broom"></i></button>
+          </div>
+
+          <div class="mb-3">
+            <label class="field-label">Customer</label>
+            <select id="pos-customer" class="select"></select>
+          </div>
+
+          <div id="pos-cart-items" class="flex-1 overflow-y-auto min-h-[8rem] mb-3"></div>
+
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="field-label">Discount %</label>
+              <input id="pos-discount" type="number" min="0" max="100" value="0" class="input" />
+            </div>
+            <div>
+              <label class="field-label">Tax %</label>
+              <input id="pos-tax" type="number" min="0" max="100" value="0" class="input" />
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="field-label">Order Notes</label>
+            <input id="pos-notes" type="text" class="input" placeholder="Optional" />
+          </div>
+
+          <div class="space-y-1.5 border-t pt-3 text-sm" style="border-color: var(--border-subtle)">
+            <div class="flex justify-between"><span class="text-[var(--text-secondary)]">Subtotal</span><span id="pos-subtotal">GH₵0.00</span></div>
+            <div class="flex justify-between"><span class="text-[var(--text-secondary)]">Discount</span><span id="pos-discount-amount" class="text-danger-500">− GH₵0.00</span></div>
+            <div class="flex justify-between"><span class="text-[var(--text-secondary)]">Tax</span><span id="pos-tax-amount">GH₵0.00</span></div>
+            <div class="flex justify-between font-display font-bold text-lg pt-1"><span>Total</span><span id="pos-total">GH₵0.00</span></div>
+          </div>
+
+          <button id="charge-btn" class="btn btn-primary w-full mt-4" disabled><i class="fa-solid fa-cash-register"></i> Charge</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast-root"></div>
+
+  <script type="module">
+    import { bootstrapApp } from '/assets/js/app.js';
+    import { initPOSPage } from '/assets/js/pages/pos.page.js';
+
+    await bootstrapApp();
+    await initPOSPage();
+  </script>
+</body>
+</html>

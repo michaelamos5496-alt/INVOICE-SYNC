@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analytics · InvSync</title>
+
+  <meta name="description" content="Deeper trend analysis: fast movers, dead stock, product performance." />
+  <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/assets/img/favicon.svg" />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <script>
+    if (localStorage.getItem('invsync.theme') === 'dark' ||
+        (!localStorage.getItem('invsync.theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/tailwind.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+  <link rel="stylesheet" href="/assets/css/components.css" />
+</head>
+<body data-page="analytics" class="bg-surface-base text-[var(--text-primary)] font-sans antialiased">
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+
+  <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/40 z-30 lg:hidden"></div>
+
+  <aside id="sidebar"
+    class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-out border-r"
+    style="border-color: var(--border-subtle); background: var(--surface-raised);">
+    <div id="sidebar-mount" class="h-full"></div>
+  </aside>
+
+  <div class="lg:pl-64 min-h-screen flex flex-col">
+    <div id="topbar-mount"></div>
+
+    <main id="main-content" class="flex-1 p-4 sm:p-6 lg:p-8 route-enter space-y-6">
+      <div>
+        <h1 class="font-display text-2xl font-bold">Analytics</h1>
+        <p class="text-sm text-[var(--text-secondary)] mt-1">Deeper trend analysis: product performance, fast movers, dead stock.</p>
+      </div>
+
+      <div class="card p-4">
+        <div id="analytics-tabs">
+          <div class="tabs-list">
+            <button class="tab-btn active" data-tab="performance" type="button">Product Performance</button>
+            <button class="tab-btn" data-tab="fast-movers" type="button">Fast Moving Products</button>
+            <button class="tab-btn" data-tab="dead-stock" type="button">Dead Stock</button>
+          </div>
+
+          <div data-tab-panel="performance" class="pt-5">
+            <div id="performance-table"></div>
+          </div>
+
+          <div data-tab-panel="fast-movers" class="hidden pt-5">
+            <p class="text-sm text-[var(--text-secondary)] mb-4">Best sellers over the last 14 days — useful for prioritizing restock orders.</p>
+            <div id="fast-movers-chart-wrap" class="h-72"></div>
+          </div>
+
+          <div data-tab-panel="dead-stock" class="hidden pt-5">
+            <p class="text-sm text-[var(--text-secondary)] mb-4">In stock but unsold in the last 30 days, sorted by capital tied up — candidates for a discount or clearance.</p>
+            <div id="dead-stock-table"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast-root"></div>
+
+  <script type="module">
+    import { bootstrapApp } from '/assets/js/app.js';
+    import { initAnalyticsPage } from '/assets/js/pages/analytics.page.js';
+
+    await bootstrapApp();
+    await initAnalyticsPage();
+  </script>
+</body>
+</html>

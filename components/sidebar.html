@@ -1,0 +1,33 @@
+<!--
+  Sidebar partial — fetched and injected into #sidebar by app.js on every
+  page. This is the ONLY place the sidebar shell markup is defined, so
+  branding/footer changes never require touching 20+ page files.
+  Nav links themselves are rendered separately by sidebar.js from
+  assets/js/config/nav.config.js into #sidebar-nav below.
+-->
+<div class="flex flex-col h-full">
+  <div class="flex items-center justify-between px-5 h-16 border-b shrink-0" style="border-color: var(--border-subtle)">
+    <a href="dashboard.html" class="flex items-center gap-2.5">
+      <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 grid place-items-center shadow-md">
+        <i class="fa-solid fa-cubes text-white text-sm"></i>
+      </span>
+      <span class="font-display font-bold text-lg tracking-tight">InvSync</span>
+    </a>
+    <button id="sidebar-close" class="lg:hidden w-8 h-8 rounded-full grid place-items-center hover:bg-[var(--surface-sunken)]" aria-label="Close menu">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+
+  <nav id="sidebar-nav" class="flex-1 overflow-y-auto px-3 py-4"></nav>
+
+  <div class="px-3 py-4 border-t shrink-0" style="border-color: var(--border-subtle)">
+    <a href="settings.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[var(--surface-sunken)] transition-colors">
+      <span class="w-8 h-8 rounded-full bg-primary-100 text-primary-700 grid place-items-center text-xs font-semibold shrink-0">MA</span>
+      <span class="flex-1 min-w-0">
+        <span class="block text-sm font-medium truncate">Michael Amos</span>
+        <span class="block text-xs text-[var(--text-muted)] truncate">Shop Owner</span>
+      </span>
+      <i class="fa-solid fa-gear text-[var(--text-muted)] text-sm"></i>
+    </a>
+  </div>
+</div>

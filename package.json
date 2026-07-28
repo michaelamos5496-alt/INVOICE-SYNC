@@ -1,0 +1,14 @@
+{
+  "name": "invsync",
+  "version": "1.0.0",
+  "private": true,
+  "description": "InvSync — unified inventory management for physical and online retail.",
+  "scripts": {
+    "build:css": "tailwindcss -i ./assets/css/tailwind-source.css -o ./assets/css/tailwind.css --minify",
+    "watch:css": "tailwindcss -i ./assets/css/tailwind-source.css -o ./assets/css/tailwind.css --watch",
+    "serve": "python3 -m http.server 8080"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.13"
+  }
+}

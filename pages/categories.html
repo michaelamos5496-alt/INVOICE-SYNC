@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Categories · InvSync</title>
+
+  <meta name="description" content="Organize the shared catalog into categories for easy browsing and filtering." />
+  <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/assets/img/favicon.svg" />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <script>
+    if (localStorage.getItem('invsync.theme') === 'dark' ||
+        (!localStorage.getItem('invsync.theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/tailwind.css" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+  <link rel="stylesheet" href="/assets/css/components.css" />
+</head>
+<body data-page="categories" class="bg-surface-base text-[var(--text-primary)] font-sans antialiased">
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+
+  <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/40 z-30 lg:hidden"></div>
+
+  <aside id="sidebar"
+    class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-out border-r"
+    style="border-color: var(--border-subtle); background: var(--surface-raised);">
+    <div id="sidebar-mount" class="h-full"></div>
+  </aside>
+
+  <div class="lg:pl-64 min-h-screen flex flex-col">
+    <div id="topbar-mount"></div>
+
+    <main id="main-content" class="flex-1 p-4 sm:p-6 lg:p-8 route-enter space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 class="font-display text-2xl font-bold">Categories</h1>
+          <p class="text-sm text-[var(--text-secondary)] mt-1">Organize the shared catalog so products are easy to browse and filter.</p>
+        </div>
+        <button id="add-entity-btn" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Add Category</button>
+      </div>
+
+      <div class="card p-4">
+        <div class="relative max-w-sm">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm"></i>
+          <input id="entity-search" class="input pl-9" placeholder="Search categories…" />
+        </div>
+      </div>
+
+      <div class="card p-5">
+        <div id="categories-table"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast-root"></div>
+
+  <script type="module">
+    import { bootstrapApp } from '/assets/js/app.js';
+    import { createSimpleCatalogPage } from '/assets/js/pages/simple-catalog.page.js';
+    import { api } from '/assets/js/services/api.service.js';
+
+    await bootstrapApp();
+    await createSimpleCatalogPage({
+      collection: api.categories,
+      entityLabel: 'Category',
+      entityLabelPlural: 'Categories',
+      fields: [
+        { key: 'name', label: 'Name', type: 'text', required: true, placeholder: 'e.g. Electronics' },
+        { key: 'description', label: 'Description', type: 'textarea', placeholder: 'Short description shown to staff' },
+      ],
+    }).init();
+  </script>
+</body>
+</html>

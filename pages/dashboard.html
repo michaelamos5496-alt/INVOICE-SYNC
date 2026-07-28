@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard · InvSync</title>
+
+  <meta name="description" content="Live KPIs, sales charts, stock movement and recent activity for your shop, in one dashboard." />
+  <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/assets/img/favicon.svg" />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <!-- Prevent flash of wrong theme before stylesheets/CSS vars load -->
+  <script>
+    if (localStorage.getItem('invsync.theme') === 'dark' ||
+        (!localStorage.getItem('invsync.theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/tailwind.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+  <link rel="stylesheet" href="/assets/css/components.css" />
+</head>
+<body data-page="dashboard" class="bg-surface-base text-[var(--text-primary)] font-sans antialiased">
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+
+  <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/40 z-30 lg:hidden"></div>
+
+  <aside id="sidebar"
+    class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-out border-r"
+    style="border-color: var(--border-subtle); background: var(--surface-raised);">
+    <div id="sidebar-mount" class="h-full"></div>
+  </aside>
+
+  <div class="lg:pl-64 min-h-screen flex flex-col">
+    <div id="topbar-mount"></div>
+
+    <main id="main-content" class="flex-1 p-4 sm:p-6 lg:p-8 route-enter space-y-6">
+      <!-- Header + quick actions -->
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 class="font-display text-2xl font-bold">Dashboard</h1>
+          <p class="text-sm text-[var(--text-secondary)] mt-1" id="dashboard-date"></p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <a href="pos.html" class="btn btn-primary btn-sm"><i class="fa-solid fa-cash-register"></i> New Sale</a>
+          <a href="products.html" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Add Product</a>
+          <a href="purchase-orders.html" class="btn btn-secondary btn-sm"><i class="fa-solid fa-file-invoice"></i> New PO</a>
+          <a href="reports.html" class="btn btn-secondary btn-sm"><i class="fa-solid fa-chart-column"></i> Reports</a>
+        </div>
+      </div>
+
+      <!-- KPI stat cards -->
+      <div id="stat-cards" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+
+      <!-- Charts -->
+      <div class="grid lg:grid-cols-3 gap-6">
+        <div class="card p-5 lg:col-span-2">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="font-display font-semibold">Sales Trend</h2>
+            <span class="text-xs text-[var(--text-muted)]">Last 14 days · both channels</span>
+          </div>
+          <div class="h-72"><canvas id="chart-sales-trend"></canvas></div>
+        </div>
+        <div class="card p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="font-display font-semibold">Stock Movement</h2>
+            <span class="text-xs text-[var(--text-muted)]">Units in vs. out</span>
+          </div>
+          <div class="h-72"><canvas id="chart-stock-movement"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Top products / recent activity / notifications -->
+      <div class="grid lg:grid-cols-3 gap-6">
+        <div class="card p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="font-display font-semibold">Top Selling Products</h2>
+          </div>
+          <div id="top-products" class="space-y-4"></div>
+        </div>
+
+        <div class="card p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="font-display font-semibold">Recent Activity</h2>
+            <a href="activity-logs.html" class="text-xs font-medium text-primary-600 hover:underline">View all</a>
+          </div>
+          <div id="recent-activity" class="space-y-4"></div>
+        </div>
+
+        <div class="card p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="font-display font-semibold">Notifications</h2>
+            <a href="notifications.html" class="text-xs font-medium text-primary-600 hover:underline">View all</a>
+          </div>
+          <div id="dashboard-notifications" class="space-y-3"></div>
+        </div>
+      </div>
+
+      <!-- Latest transactions -->
+      <div class="card p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-display font-semibold">Latest Transactions</h2>
+          <span class="text-xs text-[var(--text-muted)]">Recent orders across both channels</span>
+        </div>
+        <div id="recent-orders-table"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast-root"></div>
+
+  <script type="module">
+    import { bootstrapApp } from '/assets/js/app.js';
+    import { renderStatCards } from '/assets/js/components/stat-card.js';
+    import { renderEmptyState } from '/assets/js/components/empty-state.js';
+    import { DataTable } from '/assets/js/components/table.js';
+    import { applyChartDefaults, getChartColors } from '/assets/js/utils/chart-theme.js';
+    import { formatCurrency, formatDate, timeAgo, initials } from '/assets/js/utils/formatters.js';
+    import {
+      getDashboardStats, getSalesTrend, getStockMovementTrend,
+      getTopProducts, getRecentOrders, getRecentActivity,
+    } from '/assets/js/services/analytics.service.js';
+    import { api } from '/assets/js/services/api.service.js';
+
+    await bootstrapApp();
+
+    document.getElementById('dashboard-date').textContent =
+      `Here's what's happening across your shop today, ${formatDate(new Date(), { weekday: 'long' })}.`;
+
+    // ---- KPI stat cards ----
+    const stats = await getDashboardStats();
+    renderStatCards(document.getElementById('stat-cards'), [
+      { label: 'Total Products', value: stats.totalProducts, icon: 'fa-box', tone: 'primary' },
+      { label: 'Low Stock', value: stats.lowStock, icon: 'fa-triangle-exclamation', tone: 'warning' },
+      { label: 'Out of Stock', value: stats.outOfStock, icon: 'fa-circle-xmark', tone: 'danger' },
+      { label: 'Inventory Value', value: formatCurrency(stats.inventoryValue), icon: 'fa-warehouse', tone: 'info' },
+      { label: "Today's Sales", value: formatCurrency(stats.todaysSales), icon: 'fa-receipt', tone: 'success' },
+      { label: 'Weekly Sales', value: formatCurrency(stats.weeklySales), icon: 'fa-calendar-week', tone: 'primary' },
+      { label: 'Monthly Revenue', value: formatCurrency(stats.monthlyRevenue), icon: 'fa-sack-dollar', tone: 'success' },
+      { label: "Today's Orders", value: stats.todaysOrderCount, icon: 'fa-cart-shopping', tone: 'info' },
+    ]);
+
+    // ---- Charts ----
+    applyChartDefaults(Chart);
+    const colors = getChartColors();
+
+    const salesTrend = await getSalesTrend(14);
+    new Chart(document.getElementById('chart-sales-trend'), {
+      type: 'line',
+      data: {
+        labels: salesTrend.labels,
+        datasets: [
+          {
+            label: 'Physical Shop', data: salesTrend.physical, borderColor: colors.primary,
+            backgroundColor: colors.primaryFaint, fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2,
+          },
+          {
+            label: 'Online Shop', data: salesTrend.online, borderColor: colors.info,
+            backgroundColor: 'transparent', fill: false, tension: 0.35, pointRadius: 0, borderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: { grid: { display: false } },
+          y: { grid: { color: colors.gridLine }, beginAtZero: true, ticks: { callback: (v) => `GHS ${v}` } },
+        },
+        plugins: { legend: { position: 'bottom' } },
+      },
+    });
+
+    const stockMovement = await getStockMovementTrend(14);
+    new Chart(document.getElementById('chart-stock-movement'), {
+      type: 'bar',
+      data: {
+        labels: stockMovement.labels,
+        datasets: [
+          { label: 'Stock In', data: stockMovement.stockIn, backgroundColor: colors.success, borderRadius: 4 },
+          { label: 'Stock Out', data: stockMovement.stockOut, backgroundColor: colors.danger, borderRadius: 4 },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
+          y: { grid: { color: colors.gridLine }, beginAtZero: true },
+        },
+        plugins: { legend: { position: 'bottom' } },
+      },
+    });
+
+    // ---- Top selling products ----
+    const topProducts = await getTopProducts(5);
+    const topProductsEl = document.getElementById('top-products');
+    if (topProducts.length === 0) {
+      renderEmptyState(topProductsEl, { icon: 'fa-box', title: 'No sales yet', message: 'Sell a product to see your best sellers here.' });
+    } else {
+      topProductsEl.innerHTML = topProducts.map((row, i) => `
+        <div class="flex items-center gap-3">
+          <span class="w-7 h-7 rounded-full bg-primary-50 text-primary-600 text-xs font-bold grid place-items-center shrink-0">${i + 1}</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium truncate">${row.product.name}</p>
+            <p class="text-xs text-[var(--text-muted)]">${row.units} units sold</p>
+          </div>
+          <span class="text-sm font-semibold shrink-0">${formatCurrency(row.revenue)}</span>
+        </div>
+      `).join('');
+    }
+
+    // ---- Recent activity ----
+    const activity = await getRecentActivity(6);
+    const activityEl = document.getElementById('recent-activity');
+    if (activity.length === 0) {
+      renderEmptyState(activityEl, { icon: 'fa-clock-rotate-left', title: 'No activity yet' });
+    } else {
+      activityEl.innerHTML = activity.map((a) => `
+        <div class="flex items-start gap-3">
+          <span class="w-7 h-7 rounded-full bg-[var(--surface-sunken)] text-[var(--text-secondary)] text-[10px] font-bold grid place-items-center shrink-0 mt-0.5">${initials(a.actor)}</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm"><span class="font-medium">${a.actor}</span> ${a.action.toLowerCase()}</p>
+            <p class="text-xs text-[var(--text-muted)] truncate">${a.target}</p>
+          </div>
+          <span class="text-[11px] text-[var(--text-muted)] shrink-0">${timeAgo(a.createdAt)}</span>
+        </div>
+      `).join('');
+    }
+
+    // ---- Notifications preview ----
+    const notifications = (await api.notifications.list())
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 4);
+    const notifEl = document.getElementById('dashboard-notifications');
+    const severityBadge = { danger: 'badge-danger', warning: 'badge-warning', info: 'badge-info' };
+    if (notifications.length === 0) {
+      renderEmptyState(notifEl, { icon: 'fa-bell', title: "You're all caught up" });
+    } else {
+      notifEl.innerHTML = notifications.map((n) => `
+        <div class="flex items-start gap-2.5">
+          <span class="badge ${severityBadge[n.severity] ?? 'badge-neutral'} mt-0.5"><span class="badge-dot"></span></span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium">${n.title}</p>
+            <p class="text-xs text-[var(--text-secondary)]">${n.message}</p>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ---- Latest transactions table ----
+    const recentOrders = await getRecentOrders(20);
+    const table = new DataTable(document.getElementById('recent-orders-table'), {
+      columns: [
+        { key: 'id', label: 'Order', render: (row) => `<span class="font-medium">#${row.id.toUpperCase()}</span>` },
+        {
+          key: 'channel', label: 'Channel',
+          render: (row) => row.channel === 'physical_shop'
+            ? `<span class="badge badge-info"><i class="fa-solid fa-store"></i> In-store</span>`
+            : `<span class="badge badge-neutral"><i class="fa-solid fa-globe"></i> Online</span>`,
+        },
+        { key: 'customer', label: 'Customer', render: (row) => row.customer?.name ?? 'Walk-in customer' },
+        { key: 'total', label: 'Total', align: 'right', render: (row) => formatCurrency(row.total) },
+        { key: 'createdAt', label: 'Date', render: (row) => timeAgo(row.createdAt) },
+      ],
+      pageSize: 8,
+      searchKeys: [],
+      rowKey: (row) => row.id,
+      defaultSort: { key: 'createdAt', dir: 'desc' },
+      emptyState: { icon: 'fa-receipt', title: 'No transactions yet' },
+    });
+    table.setData(recentOrders);
+  </script>
+</body>
+</html>
