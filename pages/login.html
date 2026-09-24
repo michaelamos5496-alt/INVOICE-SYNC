@@ -62,7 +62,7 @@
         <div id="auth-alert" class="alert mt-5" role="alert" hidden></div>
 
         <form id="auth-form" class="mt-5 space-y-4" novalidate>
-          <div data-modes="signup">
+          <div data-modes="signup" hidden>
             <label class="field-label" for="f-name">Full name</label>
             <input id="f-name" class="input" type="text" autocomplete="name" placeholder="e.g. Ama Boateng" />
           </div>
@@ -84,7 +84,7 @@
             <p id="pw-hint" class="field-hint" hidden>Use at least 8 characters.</p>
           </div>
 
-          <div data-modes="recover">
+          <div data-modes="recover" hidden>
             <label class="field-label" for="f-confirm">Confirm new password</label>
             <input id="f-confirm" class="input" type="password" autocomplete="new-password" placeholder="••••••••" />
           </div>

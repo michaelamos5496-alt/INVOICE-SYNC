@@ -13,6 +13,7 @@ import { api } from './api.service.js';
 import { adjustStock, applyStockCount, computeStockStatus } from './inventory.service.js';
 import { STOCK_MOVEMENT_TYPES, CHANNELS, STOCK_STATUS } from '../config/constants.js';
 import { generateSKU } from '../utils/helpers.js';
+import { deleteImages, cloneImage } from './image-store.service.js';
 
 /** Generates a plausible EAN-13-shaped barcode for demo/manual entry. */
 export function generateBarcode() {
@@ -72,6 +73,9 @@ export async function updateProduct(id, formData, actor = 'system') {
   const { stockQuantity, ...rest } = formData;
   await api.products.update(id, rest);
 
+  // Photos the user removed in this edit are now unreferenced — free their storage.
+  if (Array.isArray(rest.images)) await deleteImages((current.images ?? []).filter((ref) => !rest.images.includes(ref)));
+
   if (typeof stockQuantity === 'number' && stockQuantity !== current.stockQuantity) {
     await applyStockCount({ productId: id, countedQuantity: stockQuantity, actor });
   }
@@ -84,6 +88,7 @@ export async function updateProduct(id, formData, actor = 'system') {
 export async function deleteProduct(id, actor = 'system') {
   const product = await api.products.get(id);
   await api.products.remove(id);
+  if (product) await deleteImages(product.images);
   if (product) await api.activityLog.create({ actor, action: 'Deleted product', target: product.name });
   return true;
 }
@@ -92,8 +97,11 @@ export async function duplicateProduct(id, actor = 'system') {
   const original = await api.products.get(id);
   if (!original) throw new Error(`Product ${id} not found`);
   const { id: _id, createdAt, updatedAt, ...rest } = original;
+  // Each product owns its photos, so the copy gets its own — deleting one later must not break the other.
+  const images = (await Promise.all((original.images ?? []).map(cloneImage))).filter(Boolean);
   return createProduct({
     ...rest,
+    images,
     name: `${original.name} (Copy)`,
     sku: generateSKU('SKU'),
     barcode: generateBarcode(),

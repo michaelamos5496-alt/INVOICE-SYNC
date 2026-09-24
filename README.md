@@ -43,7 +43,20 @@ the first page with real create/edit/delete, backed by
 barcode (with a generator), category/brand/supplier linkage,
 cost/selling price, discount, color/size/weight, location, batch
 number, expiration date, variants (color/size/stock/price-adjustment
-rows), and images (URL-based for now) — via a tabbed add/edit modal.
+rows), and photos — via a tabbed add/edit modal. On the **Images** tab you
+can take a picture or pick from the gallery (phones), or drag and drop
+(desktop): up to 6 photos per product, the first being the "main" one shown
+in the catalog and POS, with tap-to-reorder. Photos are resized in the
+browser (max 1200px, WebP) before storing — a 6 MB phone shot becomes
+~100 KB — and kept in IndexedDB (`services/image-store.service.js`) rather
+than `localStorage`, whose ~5 MB cap a shop's worth of photos would exhaust
+after roughly 100 products. Product records only hold a short `idb:<id>`
+reference. Photos are written on Save (cancelling leaves nothing behind),
+freed when removed or the product is deleted, copied on Duplicate, and
+wiped by Settings → Data → Clear. If IndexedDB is unavailable the photo is
+kept inline in the product instead, and pasting an image URL still works.
+They live in the browser for now; Phase 10 swaps in cloud object storage
+behind the same module.
 Critically, **stock quantity is never written directly**: creating a
 product routes its starting quantity through `adjustStock()`, and
 editing one routes quantity changes through `applyStockCount()` — both

@@ -6,6 +6,7 @@
  * checkout(), which is the only thing allowed to deduct stock here.
  */
 import { getActorName } from '../services/auth.service.js';
+import { imageTagHTML, hydrateImages } from '../services/image-store.service.js';
 import { api } from '../services/api.service.js';
 import { checkout, computeCartTotals } from '../services/pos.service.js';
 import { getSettings } from '../services/settings.service.js';
@@ -15,7 +16,7 @@ import { toast } from '../components/toast.js';
 import { initTabs } from '../components/tabs.js';
 import { renderEmptyState } from '../components/empty-state.js';
 import { formatCurrency, formatDateTime } from '../utils/formatters.js';
-import { debounce, escapeHTML, isSafeImageUrl } from '../utils/helpers.js';
+import { debounce, escapeHTML } from '../utils/helpers.js';
 
 let products = [];
 let categories = [];
@@ -94,7 +95,7 @@ function renderProductGrid() {
       <button type="button" data-add-product="${p.id}" ${outOfStock ? 'disabled' : ''}
         class="card p-3 text-left transition-transform ${outOfStock ? 'opacity-40 cursor-not-allowed' : 'card-hover active:scale-[0.98]'}">
         <div class="w-full aspect-square rounded-lg bg-[var(--surface-sunken)] grid place-items-center mb-2 overflow-hidden">
-          ${p.images?.[0] && isSafeImageUrl(p.images[0]) ? `<img src="${escapeHTML(p.images[0])}" class="w-full h-full object-cover" alt="" />` : '<i class="fa-solid fa-box text-2xl text-[var(--text-muted)]"></i>'}
+          ${imageTagHTML(p.images?.[0], { className: 'w-full h-full object-cover', fallbackClass: 'fa-solid fa-box text-2xl text-[var(--text-muted)]' })}
         </div>
         <p class="text-sm font-medium truncate">${escapeHTML(p.name)}</p>
         <div class="flex items-center justify-between mt-1">
@@ -107,6 +108,7 @@ function renderProductGrid() {
   grid.querySelectorAll('[data-add-product]').forEach((btn) => {
     btn.addEventListener('click', () => addToCart(products.find((p) => p.id === btn.dataset.addProduct)));
   });
+  hydrateImages(grid);
 }
 
 // ---------------------------------------------------------------------

@@ -32,6 +32,13 @@ function generateId(prefix = 'id') {
  * gets one of these so business logic never hand-rolls array splicing.
  */
 function createCollection(storageKey, idPrefix) {
+  /** storage.set() reports failure with `false` (usually a full browser quota) — never let that pass as success. */
+  const persist = (records) => {
+    if (!storage.set(storageKey, records)) {
+      throw new Error('Your browser\'s storage is full, so this couldn\'t be saved. Delete some unused products or photos and try again.');
+    }
+  };
+
   return {
     async list(filterFn) {
       await delay();
@@ -54,7 +61,7 @@ function createCollection(storageKey, idPrefix) {
         ...record,
       };
       all.push(newRecord);
-      storage.set(storageKey, all);
+      persist(all);
       return newRecord;
     },
 
@@ -64,7 +71,7 @@ function createCollection(storageKey, idPrefix) {
       const idx = all.findIndex((r) => r.id === id);
       if (idx === -1) throw new Error(`Record ${id} not found in ${storageKey}`);
       all[idx] = { ...all[idx], ...patch, id, updatedAt: new Date().toISOString() };
-      storage.set(storageKey, all);
+      persist(all);
       return all[idx];
     },
 

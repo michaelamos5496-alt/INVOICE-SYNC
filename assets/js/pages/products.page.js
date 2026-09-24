@@ -4,8 +4,8 @@
  * (tabs: Details, Pricing & Stock, Variants, Images).
  *
  * Kept out of the page's inline <script> because the product form is
- * the most stateful piece of UI in Phase 4 — variant rows and image
- * URLs are local, mutable lists the modal re-renders on every add/remove,
+ * the most stateful piece of UI in Phase 4 — variant rows and product
+ * photos are local, mutable lists the modal re-renders on every add/remove,
  * which reads a lot more clearly as a module than as one giant template
  * literal in an HTML file.
  */
@@ -22,6 +22,8 @@ import { initTabs } from '../components/tabs.js';
 import { initDropdown } from '../components/dropdown.js';
 import { formatCurrency } from '../utils/formatters.js';
 import { debounce, escapeHTML, isSafeImageUrl } from '../utils/helpers.js';
+import { compressImage } from '../utils/image-compress.js';
+import { saveImage, deleteImages, isIdbRef, imageTagHTML, hydrateImages } from '../services/image-store.service.js';
 
 const STATUS_BADGE = {
   active: 'badge-success',
@@ -81,7 +83,7 @@ function buildTable() {
         render: (row) => `
           <div class="flex items-center gap-3">
             <span class="w-10 h-10 rounded-lg bg-[var(--surface-sunken)] grid place-items-center shrink-0 overflow-hidden">
-              ${row.images?.[0] && isSafeImageUrl(row.images[0]) ? `<img src="${escapeHTML(row.images[0])}" class="w-full h-full object-cover" alt="" />` : '<i class="fa-solid fa-box text-[var(--text-muted)]"></i>'}
+              ${imageTagHTML(row.images?.[0], { className: 'w-full h-full object-cover' })}
             </span>
             <div class="min-w-0">
               <p class="text-sm font-medium truncate max-w-[14rem]">${escapeHTML(row.name)}</p>
@@ -114,6 +116,7 @@ function buildTable() {
       },
     ],
     pageSize: 8,
+    onRender: hydrateImages,
     searchKeys: ['name', 'sku', 'barcode'],
     rowKey: (row) => row.id,
     defaultSort: { key: 'name', dir: 'asc' },
@@ -195,17 +198,109 @@ function renderVariantRows() {
   });
 }
 
+const MAX_IMAGES = 6;
+
+/**
+ * imageState holds one entry per photo, in display order (index 0 is the
+ * "main" photo shown in the catalog and POS):
+ *   - string                      an existing photo ref (idb:…, http(s) URL, or data URL)
+ *   - { blob, previewUrl, name }  a photo picked in this form, compressed but not saved yet —
+ *                                 it only reaches storage when the product is saved, so
+ *                                 cancelling the form leaves nothing behind
+ *   - { processing, name, file }  a placeholder while a picked photo is being resized
+ */
+const revokePreview = (entry) => { if (entry?.previewUrl) URL.revokeObjectURL(entry.previewUrl); };
+
+function buildImageTile(entry, index) {
+  const tile = document.createElement('div');
+  tile.className = 'image-tile';
+
+  if (entry.processing) {
+    tile.classList.add('image-tile--busy');
+    tile.setAttribute('aria-busy', 'true');
+    tile.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-[var(--text-muted)]" aria-hidden="true"></i><span class="sr-only">Processing photo</span>';
+    return tile;
+  }
+
+  const img = document.createElement('img');
+  img.className = 'image-tile__img';
+  img.alt = `Product photo ${index + 1}`;
+  if (typeof entry !== 'string') img.src = entry.previewUrl;
+  else if (isIdbRef(entry)) { img.dataset.imgRef = entry; img.dataset.imgFallback = 'fa-solid fa-image text-[var(--text-muted)]'; }
+  else if (isSafeImageUrl(entry)) img.src = entry;
+  img.addEventListener('error', () => { img.removeAttribute('src'); tile.classList.add('image-tile--broken'); });
+  tile.append(img);
+
+  const button = (className, label, icon, onClick) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `image-tile__btn ${className}`;
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+    btn.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i>`;
+    btn.addEventListener('click', onClick);
+    return btn;
+  };
+
+  tile.append(button('image-tile__remove', `Remove photo ${index + 1}`, 'fa-xmark', () => {
+    revokePreview(entry);
+    imageState.splice(index, 1);
+    renderImageGrid();
+  }));
+
+  if (index === 0) {
+    const badge = document.createElement('span');
+    badge.className = 'image-tile__badge';
+    badge.textContent = 'Main';
+    tile.append(badge);
+  } else {
+    tile.append(button('image-tile__star', `Make photo ${index + 1} the main photo`, 'fa-star', () => {
+      imageState.unshift(...imageState.splice(index, 1));
+      renderImageGrid();
+    }));
+  }
+  return tile;
+}
+
 function renderImageGrid() {
   const container = document.getElementById('image-grid');
   if (!container) return;
-  container.innerHTML = imageState.map((url, i) => `
-    <div class="relative group">
-      <img src="${isSafeImageUrl(url) ? escapeHTML(url) : ''}" class="w-full h-20 object-cover rounded-lg border" style="border-color: var(--border-subtle)" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22%3E%3Crect width=%2280%22 height=%2280%22 fill=%22%23e2e8f0%22/%3E%3C/svg%3E'" />
-      <button type="button" class="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-danger-500 text-white text-[10px] grid place-items-center" data-remove-image="${i}" aria-label="Remove image"><i class="fa-solid fa-xmark"></i></button>
-    </div>`).join('');
-  container.querySelectorAll('[data-remove-image]').forEach((btn) => {
-    btn.addEventListener('click', () => { imageState.splice(Number(btn.dataset.removeImage), 1); renderImageGrid(); });
-  });
+  container.replaceChildren(...imageState.map(buildImageTile));
+  hydrateImages(container);
+
+  const counter = document.getElementById('image-counter');
+  if (counter) counter.textContent = imageState.length ? `${imageState.length} of ${MAX_IMAGES} photos` : '';
+  document.getElementById('image-dropzone')?.classList.toggle('is-disabled', imageState.length >= MAX_IMAGES);
+}
+
+/** Validates, then resizes photos one at a time (a batch of 12-megapixel phone shots decoded together can exhaust a phone's memory). */
+async function addImageFiles(fileList) {
+  const files = [...fileList];
+  if (!files.length) return;
+
+  const room = MAX_IMAGES - imageState.length;
+  if (room <= 0) { toast.warning(`A product can have up to ${MAX_IMAGES} photos. Remove one to add another.`); return; }
+  if (files.length > room) toast.warning(`Only the first ${room} photo${room === 1 ? ' was' : 's were'} added — the limit is ${MAX_IMAGES} per product.`);
+
+  const jobs = files.slice(0, room).map((file) => ({ processing: true, name: file.name, file }));
+  imageState.push(...jobs);
+  renderImageGrid();
+
+  for (const job of jobs) {
+    let result = null;
+    try {
+      result = await compressImage(job.file);
+    } catch (err) {
+      toast.danger(`${job.name || 'Photo'}: ${err.message}`);
+    }
+    // The form may have been closed/reopened meanwhile; imageState is then a different array and the job is gone.
+    const at = imageState.indexOf(job);
+    if (at !== -1) {
+      if (result) imageState[at] = { blob: result.blob, previewUrl: URL.createObjectURL(result.blob), name: job.name };
+      else imageState.splice(at, 1);
+      renderImageGrid();
+    }
+  }
 }
 
 function buildFormHTML(product) {
@@ -323,19 +418,37 @@ function buildFormHTML(product) {
         <button type="button" id="add-variant" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Add Variant</button>
       </div>
 
-      <div data-tab-panel="images" class="hidden space-y-3">
-        <div class="flex gap-2">
-          <input id="f-image-url" class="input" placeholder="https://example.com/product.jpg" />
-          <button type="button" id="add-image" class="btn btn-secondary btn-sm shrink-0"><i class="fa-solid fa-plus"></i> Add</button>
+      <div data-tab-panel="images" class="hidden space-y-4">
+        <label id="image-dropzone" class="dropzone" for="f-image-files">
+          <input id="f-image-files" type="file" accept="image/*" multiple class="sr-only" />
+          <span class="dropzone__icon"><i class="fa-solid fa-camera" aria-hidden="true"></i></span>
+          <span class="font-semibold text-sm text-[var(--text-primary)]">Choose photos</span>
+          <span class="text-xs">Take a picture or pick from your gallery — or drag and drop here</span>
+          <span class="text-xs text-[var(--text-muted)]">JPG, PNG or WebP · up to ${MAX_IMAGES} photos</span>
+        </label>
+
+        <div class="flex items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
+          <span>The first photo is the main one shown in the catalog and at the POS. Tap <i class="fa-solid fa-star" aria-hidden="true"></i> to change it.</span>
+          <span id="image-counter" class="shrink-0 font-medium" aria-live="polite"></span>
         </div>
-        <div id="image-grid" class="grid grid-cols-4 gap-2"></div>
-        <p class="field-hint">Phase 10 connects real object storage / file uploads here — for now, paste an image URL.</p>
+
+        <div id="image-grid" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3"></div>
+
+        <details class="text-sm">
+          <summary class="cursor-pointer font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]">Add a photo from a web link instead</summary>
+          <div class="flex gap-2 mt-3">
+            <input id="f-image-url" class="input" type="url" inputmode="url" placeholder="https://example.com/product.jpg" aria-label="Photo web address" />
+            <button type="button" id="add-image" class="btn btn-secondary btn-sm shrink-0"><i class="fa-solid fa-plus"></i> Add</button>
+          </div>
+        </details>
+        <p class="field-hint">Photos are resized and kept in this browser for now; Phase 10 moves them to cloud storage.</p>
       </div>
     </div>
   `;
 }
 
 export function openProductModal(product = null) {
+  imageState.forEach(revokePreview);
   variantState = product?.variants ? structuredClone(product.variants) : [];
   imageState = product?.images ? structuredClone(product.images) : [];
 
@@ -356,23 +469,42 @@ export function openProductModal(product = null) {
   el.querySelector('#f-sku-gen').addEventListener('click', () => { el.querySelector('#f-sku').value = generateSKU('SKU'); });
   el.querySelector('#f-barcode-gen').addEventListener('click', () => { el.querySelector('#f-barcode').value = generateBarcode(); });
   el.querySelector('#add-variant').addEventListener('click', () => { variantState.push({ color: '', size: '', skuSuffix: '', stock: 0, priceAdjustment: 0 }); renderVariantRows(); });
+  // ---- photos ----
+  const fileInput = el.querySelector('#f-image-files');
+  fileInput.addEventListener('change', () => { addImageFiles(fileInput.files); fileInput.value = ''; });
+
+  const dropzone = el.querySelector('#image-dropzone');
+  ['dragenter', 'dragover'].forEach((type) => dropzone.addEventListener(type, (e) => { e.preventDefault(); dropzone.classList.add('is-dragover'); }));
+  ['dragleave', 'dragend'].forEach((type) => dropzone.addEventListener(type, () => dropzone.classList.remove('is-dragover')));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('is-dragover');
+    addImageFiles(e.dataTransfer?.files ?? []);
+  });
+
   el.querySelector('#add-image').addEventListener('click', () => {
     const input = el.querySelector('#f-image-url');
     const url = input.value.trim();
     if (!url) return;
     if (!isSafeImageUrl(url)) { toast.danger('Enter a valid http(s) or data:image URL.'); return; }
+    if (imageState.length >= MAX_IMAGES) { toast.warning(`A product can have up to ${MAX_IMAGES} photos.`); return; }
     imageState.push(url);
     input.value = '';
     renderImageGrid();
   });
 
-  el.querySelector('#save-product').addEventListener('click', async () => {
+  const saveBtn = el.querySelector('#save-product');
+  saveBtn.addEventListener('click', async () => {
     const name = el.querySelector('#f-name').value.trim();
     const sku = el.querySelector('#f-sku').value.trim();
     const sellingPrice = Number(el.querySelector('#f-price').value);
 
     if (!name || !sku || Number.isNaN(sellingPrice)) {
       toast.danger('Product name, SKU and selling price are required.');
+      return;
+    }
+    if (imageState.some((entry) => entry.processing)) {
+      toast.info('Your photos are still being processed — try again in a moment.');
       return;
     }
 
@@ -397,10 +529,20 @@ export function openProductModal(product = null) {
       minStock: Number(el.querySelector('#f-min-stock').value) || 0,
       maxStock: Number(el.querySelector('#f-max-stock').value) || 0,
       variants: variantState,
-      images: imageState,
     };
 
+    saveBtn.disabled = true;
+    const newlyStored = [];
     try {
+      // Photos are only written to storage now, on Save — so cancelling the form never leaves orphans.
+      formData.images = [];
+      for (const entry of imageState) {
+        if (typeof entry === 'string') { formData.images.push(entry); continue; }
+        const ref = await saveImage(entry.blob);
+        newlyStored.push(ref);
+        formData.images.push(ref);
+      }
+
       if (product) {
         await updateProduct(product.id, formData, getActorName());
         toast.success('Product updated.');
@@ -408,9 +550,12 @@ export function openProductModal(product = null) {
         await createProduct(formData, getActorName());
         toast.success('Product added to the shared catalog.');
       }
+      imageState.forEach(revokePreview);
       modal.close();
       await refreshTable();
     } catch (err) {
+      await deleteImages(newlyStored); // the product wasn't saved, so don't keep photos nothing points at
+      saveBtn.disabled = false;
       toast.danger(`Something went wrong: ${err.message}`);
     }
   });

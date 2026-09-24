@@ -420,3 +420,74 @@ html.modal-open { overflow: hidden; }
 
   .empty-state { padding: 2rem 1rem; }
 }
+
+/* ---------------------------------------------------------------------- */
+/* Photo upload (product form → Images tab)                                */
+/* ---------------------------------------------------------------------- */
+.dropzone {
+  display: flex; flex-direction: column; align-items: center; gap: 0.375rem;
+  text-align: center;
+  padding: 1.5rem 1rem;
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.dropzone:hover, .dropzone.is-dragover {
+  border-color: var(--color-primary-400);
+  background: color-mix(in srgb, var(--color-primary-500) 8%, var(--surface-sunken));
+}
+.dropzone:focus-within { outline: 2px solid var(--color-primary-500); outline-offset: 2px; }
+.dropzone.is-disabled { opacity: 0.5; pointer-events: none; }
+.dropzone__icon {
+  width: 3rem; height: 3rem; margin-bottom: 0.25rem;
+  display: grid; place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary-500) 14%, transparent);
+  color: var(--color-primary-600);
+  font-size: 1.125rem;
+}
+
+.image-tile {
+  position: relative;
+  aspect-ratio: 1;
+  display: grid; place-items: center;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+.image-tile__img { width: 100%; height: 100%; object-fit: cover; }
+.image-tile--broken::after {
+  content: "\f03e"; font-family: "Font Awesome 6 Free"; font-weight: 900;
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: var(--text-muted); font-size: 1.25rem;
+}
+.image-tile__btn {
+  position: absolute;
+  width: 1.75rem; height: 1.75rem;
+  display: grid; place-items: center;
+  border-radius: 999px;
+  background: rgb(15 23 42 / 0.72);
+  color: #fff; font-size: 0.7rem;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.image-tile__btn:hover { background: rgb(15 23 42 / 0.9); }
+.image-tile__remove { top: 0.375rem; right: 0.375rem; }
+.image-tile__remove:hover { background: var(--color-danger-500); }
+.image-tile__star { bottom: 0.375rem; right: 0.375rem; }
+.image-tile__star:hover { background: var(--color-primary-600); }
+.image-tile__badge {
+  position: absolute; left: 0.375rem; bottom: 0.375rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-primary-600); color: #fff;
+  font-size: 0.625rem; font-weight: 700; letter-spacing: 0.02em;
+}
+/* Fingers need bigger targets than cursors. */
+@media (pointer: coarse) {
+  .image-tile__btn { width: 2.25rem; height: 2.25rem; font-size: 0.8rem; }
+}

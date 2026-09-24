@@ -9,6 +9,7 @@
 import { storage } from './storage.service.js';
 import { STORAGE_KEYS } from '../config/constants.js';
 import { seedDemoData } from './seed.service.js';
+import { clearAllImages } from './image-store.service.js';
 
 const NON_BUSINESS_KEYS = new Set(['THEME', 'SETTINGS', 'SESSION', 'LEGACY_SEED_MIGRATED']);
 const BUSINESS_DATA_KEYS = Object.keys(STORAGE_KEYS)
@@ -18,6 +19,7 @@ const BUSINESS_DATA_KEYS = Object.keys(STORAGE_KEYS)
 /** Removes every product, order, customer, and log entry. Preferences and store settings are untouched. */
 export function clearAllData() {
   BUSINESS_DATA_KEYS.forEach((key) => storage.remove(key));
+  clearAllImages(); // product photos live in IndexedDB, outside STORAGE_KEYS; fire-and-forget, it never throws
 }
 
 /** Populates empty collections with realistic sample data for exploring the product. Never overwrites existing records. */

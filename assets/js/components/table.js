@@ -14,6 +14,7 @@
  *       { key: 'actions', label: '', render: (row) => `<button>...</button>` },
  *     ],
  *     pageSize: 10,
+ *     onRender: (tbody) => {},   // optional; runs after every render of the body (paging, sorting, search)
  *     rowKey: (row) => row.id,
  *     emptyState: { icon: 'fa-box', title: 'No products yet', message: 'Add your first product to get started.' },
  *   });
@@ -139,6 +140,7 @@ export class DataTable {
     `).join('');
 
     this._renderFooter(start, pageRows.length, total, totalPages);
+    this.options.onRender?.(this.tbody);
   }
 
   _renderFooter(start, count, total, totalPages) {
