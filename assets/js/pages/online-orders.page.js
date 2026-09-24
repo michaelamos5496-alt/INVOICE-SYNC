@@ -124,7 +124,9 @@ function openViewModal(order) {
         <div class="flex justify-between font-semibold text-base border-t pt-2" style="border-color: var(--border-subtle)"><span>Total</span><span>${formatCurrency(order.total)}</span></div>
         ${order.notes ? `<p class="text-sm text-[var(--text-secondary)]"><strong>Notes:</strong> ${escapeHTML(order.notes)}</p>` : ''}
       </div>`,
-    footerHTML: `<button class="btn btn-secondary" data-modal-close type="button">Close</button>`,
+    footerHTML: `
+      <button class="btn btn-secondary" data-modal-close type="button">Close</button>
+      <a class="btn btn-primary" href="invoices.html?fromOnline=${encodeURIComponent(order.id)}"><i class="fa-solid fa-file-invoice-dollar"></i> Create Invoice</a>`,
   });
 }
 

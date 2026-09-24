@@ -118,6 +118,8 @@ html.dark .alert-info    { background: color-mix(in srgb, var(--color-info-500) 
   transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
 }
 .input::placeholder, .textarea::placeholder { color: var(--text-muted); }
+/* Search fields with a leading icon use Tailwind's pl-9, which this file would otherwise override (it loads after tailwind.css). */
+.input.pl-9 { padding-left: 2.25rem; }
 .input:focus, .select:focus, .textarea:focus {
   outline: none;
   border-color: var(--color-primary-400);

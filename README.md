@@ -164,6 +164,23 @@ page opened with 12.5 already in its tax input). Integrations
 flows are Phase 10 work; this phase just gives them a home. Remaining
 module pages are still scaffolded placeholders.
 
+**Invoices** (`pages/invoices.html`, `invoices.service.js`) is the
+invoice generator. An invoice can be built from scratch (catalog
+products or free-text custom lines, discount %, tax % pre-filled from
+Settings, Net 7/14/30 due-date presets) or generated from any POS sale
+or online order — via the page's **From Order** picker or the new
+**Create Invoice** button in the Sales / Online Orders detail modals
+(`?fromSale=` / `?fromOnline=` deep links). Invoices are numbered
+sequentially (`INV-0001`…), move draft → sent → paid (or void), and
+"overdue" is derived from a sent invoice past its due date rather than
+stored. The bill-to details are snapshotted onto the invoice, so later
+customer edits never rewrite an issued invoice. The invoice renders as
+a white, print-ready document in the store's configured currency;
+**Print / PDF** prints only that document (Save as PDF defaults the
+filename to the invoice number), and **Email** opens a prefilled
+`mailto:`. Invoices are billing documents only — they never move stock,
+since invoiced orders were already deducted at checkout.
+
 ## Production readiness
 
 A hardening pass over the whole frontend, separate from the phase
@@ -362,7 +379,7 @@ changes through `inventory.service.js`.
 Overview: Dashboard, Notifications, Activity Logs
 Catalog: Products, Categories, Brands, Suppliers
 Inventory: Inventory, Purchase Orders, Stock Transfers, Warehouse
-Sales: POS, Sales, Online Orders, Returns, Customers
+Sales: POS, Sales, Invoices, Online Orders, Returns, Customers
 Insights: Reports, Analytics
 Organization: Employees, Settings
 

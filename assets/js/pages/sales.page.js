@@ -81,6 +81,8 @@ function openSaleDetail(sale) {
         </div>
         ${sale.notes ? `<p class="text-sm text-[var(--text-secondary)]"><strong>Notes:</strong> ${escapeHTML(sale.notes)}</p>` : ''}
       </div>`,
-    footerHTML: `<button class="btn btn-secondary" data-modal-close type="button">Close</button>`,
+    footerHTML: `
+      <button class="btn btn-secondary" data-modal-close type="button">Close</button>
+      <a class="btn btn-primary" href="invoices.html?fromSale=${encodeURIComponent(sale.id)}"><i class="fa-solid fa-file-invoice-dollar"></i> Create Invoice</a>`,
   });
 }

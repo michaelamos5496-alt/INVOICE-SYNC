@@ -17,6 +17,7 @@ export const STORAGE_KEYS = Object.freeze({
   PURCHASE_ORDERS: 'invsync.purchase_orders',
   STOCK_TRANSFERS: 'invsync.stock_transfers',
   RETURNS: 'invsync.returns',
+  INVOICES: 'invsync.invoices',
   INVENTORY_LOG: 'invsync.inventory_log',
   ACTIVITY_LOG: 'invsync.activity_log',
   NOTIFICATIONS: 'invsync.notifications',

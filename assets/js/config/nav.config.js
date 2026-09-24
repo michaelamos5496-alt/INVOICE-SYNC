@@ -36,6 +36,7 @@ export const NAV_GROUPS = [
     items: [
       { key: 'pos', label: 'POS', icon: 'fa-cash-register', href: 'pos.html' },
       { key: 'sales', label: 'Sales', icon: 'fa-receipt', href: 'sales.html' },
+      { key: 'invoices', label: 'Invoices', icon: 'fa-file-invoice-dollar', href: 'invoices.html' },
       { key: 'online-orders', label: 'Online Orders', icon: 'fa-cart-shopping', href: 'online-orders.html' },
       { key: 'returns', label: 'Returns', icon: 'fa-rotate-left', href: 'returns.html' },
       { key: 'customers', label: 'Customers', icon: 'fa-users', href: 'customers.html' },

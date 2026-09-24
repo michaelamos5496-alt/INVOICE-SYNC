@@ -142,6 +142,7 @@ export const api = {
   purchaseOrders:  DATA_ADAPTER === 'rest' ? factory('purchase-orders') : factory(STORAGE_KEYS.PURCHASE_ORDERS, 'po'),
   stockTransfers:  DATA_ADAPTER === 'rest' ? factory('stock-transfers') : factory(STORAGE_KEYS.STOCK_TRANSFERS, 'trf'),
   returns:         DATA_ADAPTER === 'rest' ? factory('returns')         : factory(STORAGE_KEYS.RETURNS, 'ret'),
+  invoices:        DATA_ADAPTER === 'rest' ? factory('invoices')        : factory(STORAGE_KEYS.INVOICES, 'invc'),
   inventoryLog:    DATA_ADAPTER === 'rest' ? factory('inventory-log')   : factory(STORAGE_KEYS.INVENTORY_LOG, 'invlog'),
   activityLog:     DATA_ADAPTER === 'rest' ? factory('activity-log')   : factory(STORAGE_KEYS.ACTIVITY_LOG, 'act'),
   notifications:   DATA_ADAPTER === 'rest' ? factory('notifications')  : factory(STORAGE_KEYS.NOTIFICATIONS, 'note'),

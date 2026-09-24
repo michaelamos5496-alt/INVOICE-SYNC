@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invoices · InvSync</title>
+
+  <meta name="description" content="Generate, send, and track customer invoices — from scratch or from any sale or online order." />
+  <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
+  <link rel="apple-touch-icon" href="/assets/img/favicon.svg" />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <script>
+    if (localStorage.getItem('invsync.theme') === 'dark' ||
+        (!localStorage.getItem('invsync.theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+
+  <link rel="stylesheet" href="/assets/css/tailwind.css" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+  <link rel="stylesheet" href="/assets/css/components.css" />
+
+  <!--
+    The invoice document is a customer-facing page, so it always renders
+    as white paper with dark ink — in dark mode too — to match exactly
+    what prints. Printing swaps the whole app out for #invoice-print-root.
+  -->
+  <style>
+    .invoice-preview { background: var(--surface-sunken); border-radius: 0.75rem; padding: 1rem; }
+    .invoice-doc {
+      background: #fff; color: #1f2937; border-radius: 0.5rem; padding: 2.5rem;
+      font-family: 'Inter', system-ui, sans-serif; font-size: 0.875rem; line-height: 1.5;
+      box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+    }
+    .invoice-doc p { margin: 0; }
+    .invoice-doc__head { display: flex; justify-content: space-between; gap: 1.5rem; padding-bottom: 1.5rem; border-bottom: 3px solid var(--color-primary-600); }
+    .invoice-doc__head > div:first-child p { color: #6b7280; }
+    .invoice-doc__store { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; font-size: 1.25rem; font-weight: 800; color: #111827 !important; margin-bottom: 0.25rem !important; }
+    .invoice-doc__title { text-align: right; }
+    .invoice-doc__title h2 { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; font-size: 1.75rem; font-weight: 800; letter-spacing: 0.08em; color: var(--color-primary-600); margin: 0; }
+    .invoice-doc__number { font-family: ui-monospace, monospace; font-weight: 600; color: #374151; }
+    .invoice-doc__stamp {
+      display: inline-block; margin-top: 0.5rem; padding: 0.15rem 0.6rem; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      border: 1.5px solid currentColor;
+    }
+    .invoice-doc__stamp--draft, .invoice-doc__stamp--void { color: #6b7280; }
+    .invoice-doc__stamp--sent { color: var(--color-info-500); }
+    .invoice-doc__stamp--overdue { color: var(--color-danger-500); }
+    .invoice-doc__stamp--paid { color: var(--color-success-500); }
+
+    .invoice-doc__meta { display: flex; justify-content: space-between; gap: 1.5rem; padding: 1.5rem 0; }
+    .invoice-doc__meta p { color: #4b5563; }
+    .invoice-doc__meta dl { margin: 0; min-width: 14rem; }
+    .invoice-doc__meta dl div { display: flex; justify-content: space-between; gap: 1rem; padding: 0.15rem 0; }
+    .invoice-doc__meta dt { color: #6b7280; }
+    .invoice-doc__meta dd { margin: 0; font-weight: 600; color: #111827; text-align: right; }
+    .invoice-doc__label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #9ca3af !important; margin-bottom: 0.25rem !important; }
+    .invoice-doc__strong { font-weight: 600; color: #111827 !important; }
+
+    .invoice-doc__items { width: 100%; border-collapse: collapse; }
+    .invoice-doc__items th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; background: #f3f4f6; padding: 0.6rem 0.75rem; }
+    .invoice-doc__items td { padding: 0.7rem 0.75rem; border-bottom: 1px solid #e5e7eb; color: #1f2937; vertical-align: top; }
+    .invoice-doc__items .num { text-align: right; white-space: nowrap; }
+
+    .invoice-doc__totals { display: flex; justify-content: flex-end; padding-top: 1rem; }
+    .invoice-doc__totals dl { margin: 0; width: 100%; max-width: 18rem; }
+    .invoice-doc__totals dl div { display: flex; justify-content: space-between; padding: 0.25rem 0; }
+    .invoice-doc__totals dt { color: #6b7280; }
+    .invoice-doc__totals dd { margin: 0; color: #111827; }
+    .invoice-doc__grand { border-top: 2px solid #111827; margin-top: 0.4rem; padding-top: 0.6rem !important; font-size: 1.05rem; font-weight: 700; }
+    .invoice-doc__grand dt, .invoice-doc__grand dd { color: #111827 !important; }
+
+    .invoice-doc__notes { margin-top: 1.5rem; padding: 1rem; background: #f9fafb; border-radius: 0.5rem; color: #4b5563; }
+    .invoice-doc__foot { margin-top: 2rem; text-align: center; font-size: 0.8rem; color: #9ca3af; }
+
+    @media (max-width: 640px) {
+      .invoice-doc { padding: 1.25rem; }
+      .invoice-doc__head, .invoice-doc__meta { flex-direction: column; }
+      .invoice-doc__title { text-align: left; }
+      .invoice-preview { padding: 0; overflow-x: auto; }
+    }
+
+    #invoice-print-root { display: none; }
+    @media print {
+      @page { margin: 12mm; }
+      body > *:not(#invoice-print-root) { display: none !important; }
+      html, body { background: #fff !important; }
+      #invoice-print-root { display: block; }
+      #invoice-print-root .invoice-doc { box-shadow: none; padding: 0; border-radius: 0; }
+      .invoice-doc, .invoice-doc * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body data-page="invoices" class="bg-surface-base text-[var(--text-primary)] font-sans antialiased">
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+
+  <div id="sidebar-backdrop" class="hidden fixed inset-0 bg-black/40 z-30 lg:hidden"></div>
+
+  <aside id="sidebar"
+    class="fixed inset-y-0 left-0 z-40 w-64 -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-out border-r"
+    style="border-color: var(--border-subtle); background: var(--surface-raised);">
+    <div id="sidebar-mount" class="h-full"></div>
+  </aside>
+
+  <div class="lg:pl-64 min-h-screen flex flex-col">
+    <div id="topbar-mount"></div>
+
+    <main id="main-content" class="flex-1 p-4 sm:p-6 lg:p-8 route-enter space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 class="font-display text-2xl font-bold">Invoices</h1>
+          <p class="text-sm text-[var(--text-secondary)] mt-1">Generate, send, and track customer invoices — from scratch or from any sale or online order.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button id="from-order-btn" class="btn btn-secondary"><i class="fa-solid fa-receipt"></i> From Order</button>
+          <button id="create-invoice-btn" class="btn btn-primary"><i class="fa-solid fa-plus"></i> New Invoice</button>
+        </div>
+      </div>
+
+      <div id="invoice-stats" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+
+      <div class="card p-4 flex flex-col sm:flex-row gap-3">
+        <div class="relative flex-1 max-w-sm">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm"></i>
+          <input id="invoice-search" class="input pl-9" placeholder="Search by invoice #, customer, or email…" aria-label="Search invoices" />
+        </div>
+        <select id="invoice-status-filter" class="select sm:w-48" aria-label="Filter by status">
+          <option value="">All statuses</option>
+          <option value="draft">Draft</option>
+          <option value="sent">Sent</option>
+          <option value="overdue">Overdue</option>
+          <option value="paid">Paid</option>
+          <option value="void">Void</option>
+        </select>
+      </div>
+
+      <div class="card p-5">
+        <div id="invoices-table"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast-root"></div>
+  <div id="invoice-print-root" aria-hidden="true"></div>
+
+  <script type="module">
+    import { bootstrapApp } from '/assets/js/app.js';
+    import { initInvoicesPage } from '/assets/js/pages/invoices.page.js';
+
+    await bootstrapApp();
+    await initInvoicesPage();
+  </script>
+</body>
+</html>
