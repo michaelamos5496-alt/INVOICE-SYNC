@@ -8,10 +8,11 @@
  *
  * The bill-to details are snapshotted onto the invoice when it's saved,
  * so editing or deleting a customer later never rewrites an invoice
- * that's already gone out. "Overdue" isn't stored — it's derived from a
+ * that's already gone out (the same goes for the currency). "Overdue" isn't stored — it's derived from a
  * sent invoice whose due date has passed (see `effectiveStatus`).
  */
 import { api } from './api.service.js';
+import { getCurrency } from './settings.service.js';
 
 export const INVOICE_STATUS = {
   DRAFT: 'draft',
@@ -86,6 +87,7 @@ function normalize({ customerId = null, billTo, items, issueDate, dueDate, disco
 export async function createInvoice(data, { markSent = false } = {}, actor = 'system') {
   const invoice = await api.invoices.create({
     ...normalize(data),
+    currency: getCurrency(), // an issued invoice keeps its currency even if the shop's setting changes later
     number: await nextInvoiceNumber(),
     status: markSent ? INVOICE_STATUS.SENT : INVOICE_STATUS.DRAFT,
     sentAt: markSent ? new Date().toISOString() : null,

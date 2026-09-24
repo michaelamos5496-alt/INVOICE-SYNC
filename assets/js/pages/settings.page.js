@@ -5,7 +5,8 @@
  * "Not Connected" cards — real OAuth/API-key connection flows are
  * Phase 10 (API Integration) work; this phase just gives them a home.
  */
-import { getSettings, updateSettings } from '../services/settings.service.js';
+import { getSettings, updateSettings, getCurrency, CURRENCIES } from '../services/settings.service.js';
+import { formatCurrency } from '../utils/formatters.js';
 import { clearAllData, loadSampleData, hasAnyData } from '../services/reset.service.js';
 import { initTabs } from '../components/tabs.js';
 import { toast } from '../components/toast.js';
@@ -13,7 +14,6 @@ import { modal } from '../components/modal.js';
 import { STORAGE_KEYS } from '../config/constants.js';
 import { escapeHTML } from '../utils/helpers.js';
 
-const CURRENCIES = ['GHS', 'USD', 'NGN', 'EUR', 'GBP'];
 const TIMEZONES = ['Africa/Accra', 'Africa/Lagos', 'UTC', 'America/New_York', 'Europe/London'];
 const INTEGRATIONS = [
   { key: 'shopify', name: 'Shopify', icon: 'fa-shopify', style: 'fa-brands' },
@@ -79,10 +79,11 @@ function renderTaxCurrencyForm() {
   document.getElementById('tax-currency-form').innerHTML = `
     <div class="grid sm:grid-cols-2 gap-4">
       <div>
-        <label class="field-label">Currency</label>
-        <select id="f-currency" class="select">
-          ${CURRENCIES.map((c) => `<option value="${c}" ${s.currency === c ? 'selected' : ''}>${c}</option>`).join('')}
+        <label class="field-label" for="f-currency">Currency</label>
+        <select id="f-currency" class="select" aria-describedby="currency-hint">
+          ${CURRENCIES.map((c) => `<option value="${c.code}" ${getCurrency() === c.code ? 'selected' : ''}>${c.code} — ${c.name}</option>`).join('')}
         </select>
+        <p id="currency-hint" class="field-hint">Shown on every price and total in the app, e.g. <strong id="currency-preview"></strong>. This relabels amounts — it doesn't convert them, and invoices you've already created keep the currency they were issued in.</p>
       </div>
       <div>
         <label class="field-label">Default Tax Rate (%)</label>
@@ -93,12 +94,17 @@ function renderTaxCurrencyForm() {
     <button id="save-tax-currency" class="btn btn-primary mt-4"><i class="fa-solid fa-check"></i> Save</button>
   `;
 
+  const previewCurrency = () => {
+    document.getElementById('currency-preview').textContent = formatCurrency(1234.5, document.getElementById('f-currency').value);
+  };
+  previewCurrency();
+  document.getElementById('f-currency').addEventListener('change', previewCurrency);
+
   document.getElementById('save-tax-currency').addEventListener('click', () => {
-    updateSettings({
-      currency: document.getElementById('f-currency').value,
-      taxRate: Number(document.getElementById('f-tax-rate').value) || 0,
-    });
-    toast.success('Tax & currency settings saved.');
+    const currency = document.getElementById('f-currency').value;
+    const changed = currency !== getCurrency();
+    updateSettings({ currency, taxRate: Number(document.getElementById('f-tax-rate').value) || 0 });
+    toast.success(changed ? `Currency changed to ${currency}. Prices and totals across the app now use it.` : 'Tax & currency settings saved.');
   });
 }
 

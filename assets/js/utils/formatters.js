@@ -1,13 +1,37 @@
 /**
- * formatters.js — presentation-only helpers. No business logic here;
- * pure functions so they're trivially unit-testable later.
+ * formatters.js — presentation-only helpers. No business logic here.
+ * (formatCurrency reads the shop's currency setting as its default; everything
+ * else is a pure function.)
  */
 
-const currencyFormatter = (currency = 'GHS', locale = 'en-GH') =>
-  new Intl.NumberFormat(locale, { style: 'currency', currency });
+import { CURRENCIES, getCurrency } from '../services/settings.service.js';
 
-export function formatCurrency(amount, currency = 'GHS') {
-  return currencyFormatter(currency).format(Number(amount ?? 0));
+const formatterCache = new Map();
+
+function currencyFormatter(currency, decimals) {
+  const key = `${currency}:${decimals}`;
+  if (!formatterCache.has(key)) {
+    const locale = CURRENCIES.find((c) => c.code === currency)?.locale ?? 'en-US';
+    formatterCache.set(key, new Intl.NumberFormat(locale, {
+      style: 'currency', currency, minimumFractionDigits: decimals, maximumFractionDigits: decimals,
+    }));
+  }
+  return formatterCache.get(key);
+}
+
+/**
+ * Formats a money amount. With no `currency` given it uses the shop's currency
+ * from Settings, so every screen follows that setting automatically. Pass one
+ * explicitly only for a document that must keep the currency it was issued in
+ * (see invoices). `decimals: 0` gives compact figures for chart axes.
+ */
+export function formatCurrency(amount, currency = getCurrency(), { decimals = 2 } = {}) {
+  const value = Number(amount ?? 0);
+  try {
+    return currencyFormatter(currency, decimals).format(value);
+  } catch {
+    return `${currency} ${value.toFixed(decimals)}`; // unknown currency code — still show something sensible
+  }
 }
 
 export function formatNumber(value) {

@@ -15,6 +15,7 @@
 import { api } from './api.service.js';
 import { deductForSale, restockFromReturn } from './inventory.service.js';
 import { CHANNELS, ORDER_STATUS } from '../config/constants.js';
+import { formatCurrency } from '../utils/formatters.js';
 
 async function assertStockAvailable(items) {
   for (const item of items) {
@@ -49,10 +50,10 @@ export async function createOnlineOrder({ customerId, items, notes = '' }, actor
   const customer = customerId ? await api.customers.get(customerId) : null;
   await api.notifications.create({
     type: 'new_order', title: 'New online order',
-    message: `Order #${order.id.slice(-6).toUpperCase()} received${customer ? ` from ${customer.name}` : ''} — GHS ${total.toFixed(2)}.`,
+    message: `Order #${order.id.slice(-6).toUpperCase()} received${customer ? ` from ${customer.name}` : ''} — ${formatCurrency(total)}.`,
     severity: 'info', read: false, relatedOrderId: order.id,
   });
-  await api.activityLog.create({ actor, action: 'Received online order', target: `Order #${order.id.slice(-6).toUpperCase()} · GHS ${total.toFixed(2)}` });
+  await api.activityLog.create({ actor, action: 'Received online order', target: `Order #${order.id.slice(-6).toUpperCase()} · ${formatCurrency(total)}` });
 
   if (customer) {
     await api.customers.update(customerId, { totalOrders: (customer.totalOrders ?? 0) + 1, totalSpent: (customer.totalSpent ?? 0) + total });

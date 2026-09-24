@@ -15,7 +15,7 @@ import {
   INVOICE_STATUS, DEFAULT_DUE_DAYS, listInvoices, computeInvoiceTotals, effectiveStatus,
   createInvoice, updateInvoice, markInvoiceSent, markInvoicePaid, voidInvoice, deleteDraftInvoice, draftFromOrder,
 } from '../services/invoices.service.js';
-import { getSettings } from '../services/settings.service.js';
+import { getSettings, getCurrency } from '../services/settings.service.js';
 import { DataTable } from '../components/table.js';
 import { modal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
@@ -41,7 +41,11 @@ let invoices = [];
 let lookups = { customers: [], products: [] };
 let lineItems = [];
 
-const money = (amount) => formatCurrency(amount, getSettings().currency);
+/** Invoices created before currency was recorded (no `currency` field) are shown in the shop's current currency. */
+const money = (amount, currency = getCurrency()) => formatCurrency(amount, currency);
+
+/** Currency of the invoice being edited/created — line amounts and totals in the editor use it. */
+let editorCurrency = getCurrency();
 
 export async function initInvoicesPage() {
   const [customers, products] = await Promise.all([api.customers.list(), api.products.list()]);
@@ -87,7 +91,7 @@ function buildTable() {
       { key: 'customerName', label: 'Customer', sortable: true, render: (row) => escapeHTML(row.billTo.name) },
       { key: 'issueDate', label: 'Issued', sortable: true, render: (row) => row.issueDate ? formatDate(`${row.issueDate}T00:00:00`) : '—' },
       { key: 'dueDate', label: 'Due', sortable: true, render: (row) => row.dueDate ? formatDate(`${row.dueDate}T00:00:00`) : '—' },
-      { key: 'total', label: 'Total', align: 'right', sortable: true, render: (row) => money(row.total) },
+      { key: 'total', label: 'Total', align: 'right', sortable: true, render: (row) => money(row.total, row.currency) },
       { key: 'displayStatus', label: 'Status', render: (row) => `<span class="badge ${STATUS_BADGE[row.displayStatus]}">${row.displayStatus}</span>` },
       {
         key: 'actions', label: '',
@@ -114,11 +118,14 @@ async function refresh() {
 }
 
 function renderStats() {
-  const open = invoices.filter((i) => i.displayStatus === INVOICE_STATUS.SENT || i.displayStatus === INVOICE_STATUS.OVERDUE);
-  const overdue = invoices.filter((i) => i.displayStatus === INVOICE_STATUS.OVERDUE);
+  // Amounts in different currencies can't be added together, so the totals cover the shop's current currency.
+  const current = getCurrency();
+  const inCurrent = invoices.filter((i) => (i.currency ?? current) === current);
+  const open = inCurrent.filter((i) => i.displayStatus === INVOICE_STATUS.SENT || i.displayStatus === INVOICE_STATUS.OVERDUE);
+  const overdue = inCurrent.filter((i) => i.displayStatus === INVOICE_STATUS.OVERDUE);
   const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  const paidRecently = invoices.filter((i) => i.status === INVOICE_STATUS.PAID && new Date(i.paidAt).getTime() >= thirtyDaysAgo);
-  const drafts = invoices.filter((i) => i.status === INVOICE_STATUS.DRAFT);
+  const paidRecently = inCurrent.filter((i) => i.status === INVOICE_STATUS.PAID && new Date(i.paidAt).getTime() >= thirtyDaysAgo);
+  const drafts = inCurrent.filter((i) => i.status === INVOICE_STATUS.DRAFT);
   const sum = (list) => list.reduce((s, i) => s + i.total, 0);
 
   renderStatCards(document.getElementById('invoice-stats'), [
@@ -227,6 +234,7 @@ function blankLine() {
  */
 function openEditor(existing = null, prefill = null) {
   const settings = getSettings();
+  editorCurrency = existing?.currency ?? getCurrency();
   const base = existing ?? prefill ?? {};
   const issueDate = existing?.issueDate ?? isoDate(new Date());
   const dueDate = existing?.dueDate ?? addDays(issueDate, DEFAULT_DUE_DAYS);
@@ -392,7 +400,7 @@ function renderLineItems(container, onChange) {
       <input class="input col-span-12 sm:col-span-4" placeholder="Description" value="${escapeHTML(item.description)}" data-line-field="description" aria-label="Description" />
       <input type="number" min="1" step="1" class="input col-span-3 sm:col-span-1 text-right" value="${item.quantity || ''}" placeholder="Qty" data-line-field="quantity" aria-label="Quantity" />
       <input type="number" min="0" step="0.01" class="input col-span-4 sm:col-span-2 text-right" value="${item.price ?? ''}" placeholder="Price" data-line-field="price" aria-label="Unit price" />
-      <span class="col-span-3 sm:col-span-1 text-right text-sm font-medium" data-line-amount>${money((item.quantity || 0) * (item.price || 0))}</span>
+      <span class="col-span-3 sm:col-span-1 text-right text-sm font-medium" data-line-amount>${money((item.quantity || 0) * (item.price || 0), editorCurrency)}</span>
       <button type="button" class="btn btn-ghost btn-icon col-span-2 sm:col-span-1 justify-self-end" data-remove-line="${i}" aria-label="Remove line" ${lineItems.length === 1 ? 'disabled' : ''}><i class="fa-solid fa-xmark"></i></button>
     </div>`).join('');
 
@@ -417,7 +425,7 @@ function renderLineItems(container, onChange) {
       } else {
         item[field] = Number(input.value);
       }
-      row.querySelector('[data-line-amount]').textContent = money((item.quantity || 0) * (item.price || 0));
+      row.querySelector('[data-line-amount]').textContent = money((item.quantity || 0) * (item.price || 0), editorCurrency);
       onChange();
     });
   });
@@ -436,10 +444,10 @@ function renderTotals(el) {
   const taxPercent = Number(el.querySelector('#f-tax').value) || 0;
   const t = computeInvoiceTotals(lineItems, { discountPercent, taxPercent });
   el.querySelector('#invoice-totals').innerHTML = `
-    <div class="flex justify-between"><dt class="text-[var(--text-secondary)]">Subtotal</dt><dd>${money(t.subtotal)}</dd></div>
-    ${discountPercent ? `<div class="flex justify-between"><dt class="text-[var(--text-secondary)]">Discount (${discountPercent}%)</dt><dd>− ${money(t.discountAmount)}</dd></div>` : ''}
-    ${taxPercent ? `<div class="flex justify-between"><dt class="text-[var(--text-secondary)]">Tax (${taxPercent}%)</dt><dd>${money(t.taxAmount)}</dd></div>` : ''}
-    <div class="flex justify-between font-semibold text-base border-t pt-2" style="border-color: var(--border-subtle)"><dt>Total</dt><dd>${money(t.total)}</dd></div>
+    <div class="flex justify-between"><dt class="text-[var(--text-secondary)]">Subtotal</dt><dd>${money(t.subtotal, editorCurrency)}</dd></div>
+    ${discountPercent ? `<div class="flex justify-between"><dt class="text-[var(--text-secondary)]">Discount (${discountPercent}%)</dt><dd>− ${money(t.discountAmount, editorCurrency)}</dd></div>` : ''}
+    ${taxPercent ? `<div class="flex justify-between"><dt class="text-[var(--text-secondary)]">Tax (${taxPercent}%)</dt><dd>${money(t.taxAmount, editorCurrency)}</dd></div>` : ''}
+    <div class="flex justify-between font-semibold text-base border-t pt-2" style="border-color: var(--border-subtle)"><dt>Total</dt><dd>${money(t.total, editorCurrency)}</dd></div>
   `;
 }
 
@@ -499,7 +507,7 @@ function openPaymentModal(invoice) {
     size: 'sm',
     bodyHTML: `
       <div class="space-y-3">
-        <p class="text-sm text-[var(--text-secondary)]">Marks the full amount of <strong>${money(invoice.total)}</strong> as received from ${escapeHTML(invoice.billTo.name)}.</p>
+        <p class="text-sm text-[var(--text-secondary)]">Marks the full amount of <strong>${money(invoice.total, invoice.currency)}</strong> as received from ${escapeHTML(invoice.billTo.name)}.</p>
         <div>
           <label class="field-label" for="f-method">Payment Method</label>
           <select id="f-method" class="select">
@@ -522,7 +530,7 @@ function openPaymentModal(invoice) {
 function invoiceDocumentHTML(invoice) {
   const s = getSettings();
   const status = effectiveStatus(invoice);
-  const cur = (n) => formatCurrency(n, s.currency);
+  const cur = (n) => money(n, invoice.currency);
   const multiline = (text) => escapeHTML(text).replace(/\n/g, '<br>');
 
   const rows = invoice.items.map((item) => `
@@ -601,11 +609,11 @@ function emailInvoice(invoice) {
   const lines = [
     `Hi ${invoice.billTo.name},`,
     '',
-    `Please find invoice ${invoice.number} for ${formatCurrency(invoice.total, s.currency)}, due ${formatDate(`${invoice.dueDate}T00:00:00`)}.`,
+    `Please find invoice ${invoice.number} for ${money(invoice.total, invoice.currency)}, due ${formatDate(`${invoice.dueDate}T00:00:00`)}.`,
     '',
-    ...invoice.items.map((i) => `- ${i.description} × ${i.quantity}: ${formatCurrency(i.quantity * i.price, s.currency)}`),
+    ...invoice.items.map((i) => `- ${i.description} × ${i.quantity}: ${money(i.quantity * i.price, invoice.currency)}`),
     '',
-    `Total: ${formatCurrency(invoice.total, s.currency)}`,
+    `Total: ${money(invoice.total, invoice.currency)}`,
     ...(invoice.notes ? ['', invoice.notes] : []),
     '',
     'Thank you for your business.',

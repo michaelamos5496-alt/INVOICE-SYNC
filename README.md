@@ -171,7 +171,13 @@ inert: the dark-mode toggle in Preferences drives the same
 `localStorage` key the topbar toggle uses, and the Tax & Currency
 tab's default tax rate now pre-fills the POS screen's tax field on
 load (verified end-to-end: set 12.5% in Settings, confirmed the POS
-page opened with 12.5 already in its tax input). Integrations
+page opened with 12.5 already in its tax input). The currency you pick
+there is the single source of truth for money everywhere: `formatCurrency()`
+in `utils/formatters.js` defaults to `getCurrency()` from
+`settings.service.js` (cached, cleared when settings change — including from
+another tab), so every price, total, chart axis and new log/notification
+message follows it. It's a display setting: amounts are relabelled, not
+converted. Invoices record their currency when created and keep it. Integrations
 (Shopify, WooCommerce, Stripe, Paystack, Hubtel) are static
 "Not Connected" cards with disabled Connect buttons — real OAuth/API-key
 flows are Phase 10 work; this phase just gives them a home. Remaining

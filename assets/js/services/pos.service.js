@@ -13,6 +13,7 @@
 import { api } from './api.service.js';
 import { deductForSale } from './inventory.service.js';
 import { CHANNELS } from '../config/constants.js';
+import { formatCurrency } from '../utils/formatters.js';
 
 /** Pure math so the cart UI can preview totals without hitting storage. */
 export function computeCartTotals(cart, { discountPercent = 0, taxPercent = 0 } = {}) {
@@ -58,7 +59,7 @@ export async function checkout({ cart, customerId, paymentMethod, payments, note
     await deductForSale({ productId: item.productId, quantity: item.quantity, channel: CHANNELS.PHYSICAL, orderId: sale.id, actor });
   }
 
-  await api.activityLog.create({ actor, action: 'Processed in-store sale', target: `Order #${sale.id.slice(-6).toUpperCase()} · GHS ${total.toFixed(2)}` });
+  await api.activityLog.create({ actor, action: 'Processed in-store sale', target: `Order #${sale.id.slice(-6).toUpperCase()} · ${formatCurrency(total)}` });
 
   if (customerId) {
     const customer = await api.customers.get(customerId);

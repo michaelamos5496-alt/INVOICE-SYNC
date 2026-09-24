@@ -176,7 +176,7 @@
         interaction: { mode: 'index', intersect: false },
         scales: {
           x: { grid: { display: false } },
-          y: { grid: { color: colors.gridLine }, beginAtZero: true, ticks: { callback: (v) => `GHS ${v}` } },
+          y: { grid: { color: colors.gridLine }, beginAtZero: true, ticks: { callback: (v) => formatCurrency(v, undefined, { decimals: 0 }) } },
         },
         plugins: { legend: { position: 'bottom' } },
       },
