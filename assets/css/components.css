@@ -61,6 +61,7 @@
   padding: 0.2rem 0.65rem;
   border-radius: 999px;
   line-height: 1.4;
+  white-space: nowrap;
 }
 .badge-success { background: var(--color-success-100); color: #047857; }
 .badge-warning { background: var(--color-warning-100); color: #b45309; }
@@ -279,4 +280,143 @@ html.dark .alert-info    { background: color-mix(in srgb, var(--color-info-500) 
   background: var(--surface-sunken);
   color: var(--text-muted);
   font-size: 1.5rem;
+}
+
+/* ==========================================================================
+   RESPONSIVE & TOUCH
+   Everything below adapts the components above for phones and tablets.
+   Breakpoints match Tailwind's: sm = 640px, lg = 1024px.
+   ========================================================================== */
+
+/* Grid/flex children default to min-width:auto, so one wide child (a chart
+   canvas, a table) could push a card past the screen edge. */
+.card, .grid > * { min-width: 0; }
+
+/* When a wide table has to scroll sideways (tablets), keep the row-actions
+   menu pinned to the right edge instead of hidden off-screen. */
+@media (min-width: 640px) {
+  .data-table td[data-cell="actions"] {
+    position: sticky; right: 0;
+    background: var(--surface-raised);
+    box-shadow: -8px 0 8px -8px color-mix(in srgb, var(--text-primary) 18%, transparent);
+  }
+  .data-table tbody tr:hover td[data-cell="actions"] { background: var(--surface-sunken); }
+}
+@media (min-width: 1280px) {
+  .data-table td[data-cell="actions"] { box-shadow: none; }
+}
+
+/* Scroll lock while a modal is open (see modal.js). */
+html.modal-open { overflow: hidden; }
+
+/* Stat tiles: long currency values must never push the icon out of the card. */
+.stat-card > div > div { min-width: 0; }
+.stat-card .stat-icon { flex-shrink: 0; }
+/* 4-up tiles next to the sidebar are narrowest on small laptops / landscape tablets. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .stat-card { padding: 1rem; }
+  .stat-card .text-2xl { font-size: 1.25rem; }
+  .stat-card .stat-icon { width: 2.25rem; height: 2.25rem; font-size: 1rem; }
+}
+
+/* ---- Touch devices: comfortable tap targets (~40px+) ---- */
+@media (pointer: coarse) {
+  .btn { min-height: 2.75rem; }
+  .btn-sm { min-height: 2.5rem; padding-left: 0.9rem; padding-right: 0.9rem; }
+  .btn-icon { min-width: 2.75rem; }
+  .page-btn { min-width: 2.5rem; height: 2.5rem; }
+  .dropdown-item { padding: 0.75rem 0.875rem; font-size: 0.9375rem; }
+  .tab-btn { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+  .btn:active, .card-hover:active { transform: scale(0.98); }
+  /* Hover lift feels sticky on touch — the last-tapped card stays raised. */
+  .card-hover:hover { transform: none; box-shadow: var(--shadow-sm); }
+}
+
+@media (max-width: 639px) {
+  /* iOS Safari zooms the whole page into any focused field under 16px. */
+  .input, .select, .textarea { font-size: 1rem; }
+
+  /* ---- Tabs: one swipeable row instead of wrapping into a jumble ---- */
+  .tabs-list {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    margin-left: -0.25rem; margin-right: -0.25rem;
+    padding-left: 0.25rem; padding-right: 0.25rem;
+  }
+  .tabs-list::-webkit-scrollbar { display: none; }
+  .tab-btn { flex-shrink: 0; white-space: nowrap; scroll-snap-align: start; padding-left: 0.875rem; padding-right: 0.875rem; }
+
+  /* ---- Stat cards: 2-up compact tiles instead of a long single column ---- */
+  :is(div, section):has(> .stat-card) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 0.75rem !important; }
+  .stat-card { padding: 0.875rem; }
+  .stat-card > div { flex-direction: column-reverse; gap: 0.625rem; }
+  .stat-card .stat-icon { width: 2rem; height: 2rem; font-size: 0.875rem; border-radius: var(--radius-sm); }
+  .stat-card .text-2xl { font-size: 1.125rem; line-height: 1.4; overflow-wrap: anywhere; }
+  .stat-card .text-sm { font-size: 0.75rem; }
+
+  /* ---- Data tables: each row becomes a stacked card (see table.js) ---- */
+  .data-table--stack thead { display: none; }
+  .data-table--stack, .data-table--stack tbody { display: block; width: 100%; }
+  .data-table--stack tbody tr {
+    display: block; position: relative;
+    padding: 0.875rem 0.25rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .data-table--stack tbody tr:last-child { border-bottom: none; }
+  .data-table--stack tbody tr:hover { background: transparent; }
+  /* Label floats left, the cell's own content flows right-aligned beside
+     it — so multi-part cells (price + old price, qty + badge) stay together. */
+  .data-table--stack tbody td {
+    display: block;
+    padding: 0.3rem 0; border: none; text-align: right; line-height: 1.6;
+  }
+  .data-table--stack tbody td::after { content: ""; display: table; clear: both; }
+  .data-table--stack tbody td[data-label]::before {
+    content: attr(data-label);
+    float: left; margin-right: 1rem;
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+    line-height: 1.6rem; color: var(--text-muted); text-align: left;
+  }
+  .data-table--stack tbody td > .flex { display: inline-flex; vertical-align: middle; }
+  .data-table--stack tbody td[data-cell="primary"] {
+    text-align: left;
+    font-weight: 600; padding-right: 3.25rem; margin-bottom: 0.25rem;
+  }
+  .data-table--stack tbody td[data-cell="primary"] > .flex { display: flex; }
+  .data-table--stack tbody td[data-cell="primary"]::before,
+  .data-table--stack tbody td[data-cell="actions"]::before { display: none; }
+  .data-table--stack tbody td[data-cell="actions"] {
+    position: absolute; top: 0.5rem; right: 0; padding: 0;
+  }
+  .data-table--stack tbody td[data-cell="actions"]::after { display: none; }
+  /* Empty state + skeleton rows span the whole card, no labels. */
+  .data-table--stack tbody td[colspan] { display: block; text-align: center; }
+  .data-table--stack tbody td:not([data-label]) { display: block; }
+  .data-table--stack tbody td:not([data-label]) .skeleton { max-width: none; }
+  [data-table-footer] { flex-wrap: wrap; gap: 0.5rem; justify-content: center !important; }
+
+  /* ---- Modals: bottom sheet that uses the full screen width ---- */
+  .modal-wrapper { align-items: flex-end !important; padding: 0 !important; }
+  .modal-dialog {
+    max-width: none !important;
+    max-height: 92dvh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+    border-bottom: none;
+  }
+  .modal-header { padding: 0.875rem 1rem !important; }
+  .modal-body { padding: 1rem !important; max-height: none !important; flex: 1 1 auto; overscroll-behavior: contain; }
+  .modal-footer {
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom)) !important;
+    gap: 0.5rem !important;
+  }
+  .modal-footer > .btn { flex: 1 1 auto; }
+
+  /* ---- Toasts: full-width at the top of the screen ---- */
+  #toast-root { left: 0.75rem; right: 0.75rem; top: 0.75rem; }
+  #toast-root > * { min-width: 0; max-width: none; }
+
+  .empty-state { padding: 2rem 1rem; }
 }

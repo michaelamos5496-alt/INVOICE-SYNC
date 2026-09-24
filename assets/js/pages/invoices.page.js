@@ -385,14 +385,14 @@ function openEditor(existing = null, prefill = null) {
 
 function renderLineItems(container, onChange) {
   container.innerHTML = lineItems.map((item, i) => `
-    <div class="grid grid-cols-12 gap-2 items-center" data-line-row="${i}">
+    <div class="grid grid-cols-12 gap-2 items-center pb-3 sm:pb-0 border-b sm:border-0 last:border-0" style="border-color: var(--border-subtle)" data-line-row="${i}">
       <select class="select col-span-12 sm:col-span-3" data-line-field="productId" aria-label="Product">
         <option value="">Custom item</option>
         ${lookups.products.map((p) => `<option value="${p.id}" ${p.id === item.productId ? 'selected' : ''}>${escapeHTML(p.name)}</option>`).join('')}
       </select>
       <input class="input col-span-12 sm:col-span-4" placeholder="Description" value="${escapeHTML(item.description)}" data-line-field="description" aria-label="Description" />
-      <input type="number" min="1" step="1" class="input col-span-3 sm:col-span-1 text-right" value="${item.quantity || ''}" data-line-field="quantity" aria-label="Quantity" />
-      <input type="number" min="0" step="0.01" class="input col-span-4 sm:col-span-2 text-right" value="${item.price ?? ''}" data-line-field="price" aria-label="Unit price" />
+      <input type="number" min="1" step="1" class="input col-span-3 sm:col-span-1 text-right" value="${item.quantity || ''}" placeholder="Qty" data-line-field="quantity" aria-label="Quantity" />
+      <input type="number" min="0" step="0.01" class="input col-span-4 sm:col-span-2 text-right" value="${item.price ?? ''}" placeholder="Price" data-line-field="price" aria-label="Unit price" />
       <span class="col-span-3 sm:col-span-1 text-right text-sm font-medium" data-line-amount>${money((item.quantity || 0) * (item.price || 0))}</span>
       <button type="button" class="btn btn-ghost btn-icon col-span-2 sm:col-span-1 justify-self-end" data-remove-line="${i}" aria-label="Remove line" ${lineItems.length === 1 ? 'disabled' : ''}><i class="fa-solid fa-xmark"></i></button>
     </div>`).join('');

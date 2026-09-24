@@ -19,18 +19,18 @@ const FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea:not([disab
 function buildShell({ title, bodyHTML, size = 'md', footerHTML = '' }) {
   const sizes = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' };
   const wrapper = document.createElement('div');
-  wrapper.className = 'fixed inset-0 z-[90] flex items-center justify-center p-4 animate-fade-in';
+  wrapper.className = 'modal-wrapper fixed inset-0 z-[90] flex items-center justify-center p-4 animate-fade-in';
   wrapper.innerHTML = `
     <div class="absolute inset-0" style="background: var(--surface-overlay);" data-modal-backdrop></div>
-    <div class="relative w-full ${sizes[size] ?? sizes.md} card animate-slide-up p-0 overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
-      <div class="flex items-center justify-between px-6 py-4 border-b" style="border-color: var(--border-subtle)">
+    <div class="modal-dialog relative w-full ${sizes[size] ?? sizes.md} card animate-slide-up p-0 overflow-hidden flex flex-col" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
+      <div class="modal-header flex items-center justify-between gap-3 px-6 py-4 border-b shrink-0" style="border-color: var(--border-subtle)">
         <h3 id="modal-title" class="font-display text-lg font-semibold">${title ?? ''}</h3>
-        <button data-modal-close class="w-8 h-8 rounded-full grid place-items-center hover:bg-[var(--surface-sunken)] transition-colors" aria-label="Close dialog">
+        <button data-modal-close class="shrink-0 w-9 h-9 rounded-full grid place-items-center hover:bg-[var(--surface-sunken)] transition-colors" aria-label="Close dialog">
           <i class="fa-solid fa-xmark" aria-hidden="true"></i>
         </button>
       </div>
-      <div class="px-6 py-5 max-h-[70vh] overflow-y-auto">${bodyHTML ?? ''}</div>
-      ${footerHTML ? `<div class="flex items-center justify-end gap-3 px-6 py-4 border-t" style="border-color: var(--border-subtle)">${footerHTML}</div>` : ''}
+      <div class="modal-body px-6 py-5 max-h-[70vh] overflow-y-auto">${bodyHTML ?? ''}</div>
+      ${footerHTML ? `<div class="modal-footer flex flex-wrap items-center justify-end gap-3 px-6 py-4 border-t shrink-0" style="border-color: var(--border-subtle)">${footerHTML}</div>` : ''}
     </div>
   `;
   return wrapper;
@@ -40,6 +40,7 @@ function close() {
   if (!activeModal) return;
   activeModal.remove();
   activeModal = null;
+  document.documentElement.classList.remove('modal-open');
   document.removeEventListener('keydown', onKeydown);
   if (previouslyFocused?.isConnected) previouslyFocused.focus();
   previouslyFocused = null;
@@ -74,6 +75,8 @@ function open(options) {
   });
   document.body.appendChild(el);
   activeModal = el;
+  // Stops the page behind from scrolling under a touch drag (most noticeable on phones).
+  document.documentElement.classList.add('modal-open');
   document.addEventListener('keydown', onKeydown);
 
   const dialog = el.querySelector('[role="dialog"]');

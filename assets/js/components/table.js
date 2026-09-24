@@ -22,6 +22,11 @@
 import { renderEmptyState } from './empty-state.js';
 import { renderSkeletonRows } from './skeleton.js';
 
+function cellRole(col, index) {
+  if (!col.label) return ' data-cell="actions"';
+  return index === 0 ? ' data-cell="primary"' : '';
+}
+
 export class DataTable {
   constructor(container, options) {
     this.container = container;
@@ -36,7 +41,7 @@ export class DataTable {
 
     this.container.innerHTML = `
       <div class="overflow-x-auto">
-        <table class="data-table">
+        <table class="data-table data-table--stack">
           <thead><tr></tr></thead>
           <tbody></tbody>
         </table>
@@ -121,10 +126,14 @@ export class DataTable {
       return;
     }
 
+    // data-label / data-cell drive the phone layout in components.css,
+    // where each row collapses into a stacked card: the first column
+    // becomes the card title, label-less columns (row actions) pin to the
+    // top-right corner, and every other cell shows its column label.
     this.tbody.innerHTML = pageRows.map((row) => `
       <tr data-row-key="${this.options.rowKey ? this.options.rowKey(row) : ''}">
-        ${this.options.columns.map((col) => `
-          <td class="${col.align === 'right' ? 'text-right' : ''}">${col.render ? col.render(row) : row[col.key] ?? ''}</td>
+        ${this.options.columns.map((col, i) => `
+          <td class="${col.align === 'right' ? 'text-right' : ''}" data-label="${col.label}"${cellRole(col, i)}>${col.render ? col.render(row) : row[col.key] ?? ''}</td>
         `).join('')}
       </tr>
     `).join('');

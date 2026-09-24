@@ -48,6 +48,13 @@ export async function initPOSPage() {
   document.getElementById('pos-discount').addEventListener('input', renderCart);
   document.getElementById('pos-tax').addEventListener('input', renderCart);
   document.getElementById('charge-btn').addEventListener('click', openPaymentModal);
+  document.getElementById('pos-mobile-bar-btn').addEventListener('click', () => {
+    document.getElementById('pos-cart').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  // Once the real Charge button is on screen the shortcut bar is redundant (and would cover it).
+  new IntersectionObserver(([entry]) => {
+    document.getElementById('pos-mobile-bar').classList.toggle('invisible', entry.isIntersecting);
+  }).observe(document.getElementById('charge-btn'));
   document.getElementById('clear-cart-btn').addEventListener('click', () => {
     if (!cart.length) return;
     cart = [];
@@ -140,18 +147,18 @@ function renderCart() {
     renderEmptyState(container, { icon: 'fa-cart-shopping', title: 'Cart is empty', message: 'Tap a product to add it.' });
   } else {
     container.innerHTML = cart.map((item) => `
-      <div class="flex items-center gap-3 py-2.5 border-b last:border-0" style="border-color: var(--border-subtle)">
-        <div class="flex-1 min-w-0">
+      <div class="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2 py-2.5 border-b last:border-0" style="border-color: var(--border-subtle)">
+        <div class="basis-full sm:basis-0 flex-1 min-w-0">
           <p class="text-sm font-medium truncate">${escapeHTML(item.name)}</p>
           <p class="text-xs text-[var(--text-muted)]">${formatCurrency(item.unitPrice)} each</p>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          <button class="w-7 h-7 rounded-lg grid place-items-center hover:bg-[var(--surface-sunken)]" data-qty-minus="${item.productId}"><i class="fa-solid fa-minus text-xs"></i></button>
+          <button type="button" aria-label="Decrease quantity" class="w-9 h-9 sm:w-7 sm:h-7 rounded-lg grid place-items-center bg-[var(--surface-sunken)] sm:bg-transparent hover:bg-[var(--surface-sunken)]" data-qty-minus="${item.productId}"><i class="fa-solid fa-minus text-xs"></i></button>
           <span class="w-6 text-center text-sm font-medium">${item.quantity}</span>
-          <button class="w-7 h-7 rounded-lg grid place-items-center hover:bg-[var(--surface-sunken)]" data-qty-plus="${item.productId}"><i class="fa-solid fa-plus text-xs"></i></button>
+          <button type="button" aria-label="Increase quantity" class="w-9 h-9 sm:w-7 sm:h-7 rounded-lg grid place-items-center bg-[var(--surface-sunken)] sm:bg-transparent hover:bg-[var(--surface-sunken)]" data-qty-plus="${item.productId}"><i class="fa-solid fa-plus text-xs"></i></button>
         </div>
-        <span class="text-sm font-semibold w-16 text-right shrink-0">${formatCurrency(item.unitPrice * item.quantity)}</span>
-        <button class="w-7 h-7 rounded-lg grid place-items-center text-danger-500 hover:bg-[var(--surface-sunken)] shrink-0" data-remove="${item.productId}"><i class="fa-solid fa-trash text-xs"></i></button>
+        <span class="text-sm font-semibold min-w-[4.5rem] text-right shrink-0 ml-auto sm:ml-0">${formatCurrency(item.unitPrice * item.quantity)}</span>
+        <button type="button" aria-label="Remove item" class="w-9 h-9 sm:w-7 sm:h-7 rounded-lg grid place-items-center text-danger-500 hover:bg-[var(--surface-sunken)] shrink-0" data-remove="${item.productId}"><i class="fa-solid fa-trash text-xs"></i></button>
       </div>`).join('');
 
     container.querySelectorAll('[data-qty-minus]').forEach((btn) => btn.addEventListener('click', () => {
@@ -171,6 +178,12 @@ function renderCart() {
   document.getElementById('pos-tax-amount').textContent = formatCurrency(totals.taxAmount);
   document.getElementById('pos-total').textContent = formatCurrency(totals.total);
   chargeBtn.disabled = cart.length === 0;
+
+  const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  document.getElementById('pos-mobile-bar').classList.toggle('hidden', !cart.length);
+  document.getElementById('pos-mobile-count').textContent = `${itemCount} item${itemCount === 1 ? '' : 's'}`;
+  document.getElementById('pos-mobile-total').textContent = formatCurrency(totals.total);
+  document.getElementById('main-content').classList.toggle('pb-28', cart.length > 0);
 }
 
 function populateCustomerSelect() {

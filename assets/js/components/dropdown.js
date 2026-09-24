@@ -30,8 +30,13 @@ export function initDropdown(triggerEl, items, { align = 'right' } = {}) {
     triggerEl.setAttribute('aria-expanded', 'false');
     document.removeEventListener('click', onOutsideClick);
     document.removeEventListener('keydown', onKeydown);
+    window.removeEventListener('scroll', onViewportChange, true);
+    window.removeEventListener('resize', onViewportChange);
     if (returnFocus) triggerEl.focus();
   };
+
+  // The menu is position:fixed, so it would float in place while the page scrolls under it.
+  const onViewportChange = (e) => { if (!menu?.contains(e.target)) close(); };
 
   const onOutsideClick = (e) => {
     if (!e.target.closest('.dropdown-menu') && e.target !== triggerEl && !triggerEl.contains(e.target)) close();
@@ -76,14 +81,19 @@ export function initDropdown(triggerEl, items, { align = 'right' } = {}) {
     const triggerRect = triggerEl.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
     menu.style.position = 'fixed';
-    menu.style.top = `${triggerRect.bottom + 6}px`;
-    menu.style.left = align === 'right'
-      ? `${Math.max(8, triggerRect.right - menuRect.width)}px`
-      : `${triggerRect.left}px`;
+    // Keep the menu on-screen: open upward when there isn't room below
+    // (rows near the bottom of a phone screen), and clamp horizontally.
+    const fitsBelow = triggerRect.bottom + 6 + menuRect.height <= window.innerHeight - 8;
+    const top = fitsBelow ? triggerRect.bottom + 6 : Math.max(8, triggerRect.top - 6 - menuRect.height);
+    const preferredLeft = align === 'right' ? triggerRect.right - menuRect.width : triggerRect.left;
+    menu.style.top = `${top}px`;
+    menu.style.left = `${Math.min(Math.max(8, preferredLeft), window.innerWidth - menuRect.width - 8)}px`;
 
     menuItems()[0]?.focus();
     setTimeout(() => document.addEventListener('click', onOutsideClick), 0);
     document.addEventListener('keydown', onKeydown);
+    window.addEventListener('scroll', onViewportChange, true);
+    window.addEventListener('resize', onViewportChange);
   };
 
   triggerEl.addEventListener('click', (e) => { e.stopPropagation(); open(); });
