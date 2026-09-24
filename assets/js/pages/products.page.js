@@ -469,10 +469,6 @@ function buildFormHTML(product) {
       <div data-tab-panel="pricing" class="hidden space-y-4">
         <div class="grid sm:grid-cols-3 gap-4">
           <div>
-            <label class="field-label">Cost Price</label>
-            <input id="f-cost" type="number" step="0.01" min="0" class="input" value="${p.costPrice ?? ''}" />
-          </div>
-          <div>
             <label class="field-label">Selling Price *</label>
             <input id="f-price" type="number" step="0.01" min="0" class="input" value="${p.sellingPrice ?? ''}" required />
           </div>
@@ -616,7 +612,6 @@ export function openProductModal(product = null) {
       location: el.querySelector('#f-location').value || null,
       batchNumber: el.querySelector('#f-batch').value.trim() || null,
       expirationDate: el.querySelector('#f-expiry').value || null,
-      costPrice: Number(el.querySelector('#f-cost').value) || 0,
       sellingPrice,
       discount: Number(el.querySelector('#f-discount').value) || 0,
       stockQuantity: stockFromVariants(Number(el.querySelector('#f-stock').value) || 0),
