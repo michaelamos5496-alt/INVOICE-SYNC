@@ -9,6 +9,7 @@
  * which reads a lot more clearly as a module than as one giant template
  * literal in an HTML file.
  */
+import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import {
   listProducts, createProduct, updateProduct, deleteProduct, duplicateProduct,
@@ -142,14 +143,14 @@ function wireRowActions() {
     const productId = btn.dataset.rowActions;
     initDropdown(btn, [
       { label: 'Edit', icon: 'fa-pen', onClick: async () => openProductModal(await api.products.get(productId)) },
-      { label: 'Duplicate', icon: 'fa-copy', onClick: async () => { await duplicateProduct(productId, 'Michael Amos'); toast.success('Product duplicated.'); refreshTable(); } },
+      { label: 'Duplicate', icon: 'fa-copy', onClick: async () => { await duplicateProduct(productId, getActorName()); toast.success('Product duplicated.'); refreshTable(); } },
       { divider: true },
       {
         label: 'Delete', icon: 'fa-trash', danger: true,
         onClick: async () => {
           const ok = await modal.confirm({ title: 'Delete product?', message: 'This removes it from the shared catalog permanently. This cannot be undone.' });
           if (!ok) return;
-          await deleteProduct(productId, 'Michael Amos');
+          await deleteProduct(productId, getActorName());
           toast.success('Product deleted.');
           refreshTable();
         },
@@ -401,10 +402,10 @@ export function openProductModal(product = null) {
 
     try {
       if (product) {
-        await updateProduct(product.id, formData, 'Michael Amos');
+        await updateProduct(product.id, formData, getActorName());
         toast.success('Product updated.');
       } else {
-        await createProduct(formData, 'Michael Amos');
+        await createProduct(formData, getActorName());
         toast.success('Product added to the shared catalog.');
       }
       modal.close();

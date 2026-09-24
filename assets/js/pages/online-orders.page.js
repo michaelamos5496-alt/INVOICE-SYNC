@@ -7,6 +7,7 @@
  * the online channel draws from the identical pool the POS just sold
  * from in Phase 6.
  */
+import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import {
   listOnlineOrders, createOnlineOrder, fulfillOnlineOrder, cancelOnlineOrder, simulateIncomingOrder,
@@ -91,7 +92,7 @@ function wireRowActions() {
       {
         label: 'Mark Fulfilled', icon: 'fa-box-open',
         onClick: async () => {
-          try { await fulfillOnlineOrder(id, 'Michael Amos'); toast.success('Order marked as fulfilled.'); refreshTable(); }
+          try { await fulfillOnlineOrder(id, getActorName()); toast.success('Order marked as fulfilled.'); refreshTable(); }
           catch (err) { toast.danger(err.message); }
         },
       },
@@ -101,7 +102,7 @@ function wireRowActions() {
         onClick: async () => {
           const ok = await modal.confirm({ title: 'Cancel this order?', message: 'This restocks every item back into shared inventory.' });
           if (!ok) return;
-          try { await cancelOnlineOrder(id, 'Michael Amos'); toast.success('Order cancelled — stock restored.'); refreshTable(); }
+          try { await cancelOnlineOrder(id, getActorName()); toast.success('Order cancelled — stock restored.'); refreshTable(); }
           catch (err) { toast.danger(err.message); }
         },
       },
@@ -208,7 +209,7 @@ function openCreateModal() {
         customerId: el.querySelector('#f-customer').value,
         items: validItems,
         notes: el.querySelector('#f-notes').value.trim(),
-      }, 'Michael Amos');
+      }, getActorName());
       toast.success(`Order #${order.id.slice(-6).toUpperCase()} created — inventory updated.`);
       modal.close();
       refreshTable();

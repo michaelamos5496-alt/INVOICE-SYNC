@@ -5,6 +5,7 @@
  * quantity change but updates the product's location and logs both
  * legs of the move for the audit trail.
  */
+import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import { createStockTransfer } from '../services/inventory.service.js';
 import { DataTable } from '../components/table.js';
@@ -113,7 +114,7 @@ function openCreateModal() {
     if (!quantity || quantity <= 0) { toast.danger('Enter a valid quantity.'); return; }
 
     try {
-      await createStockTransfer({ productId, quantity, fromLocationId, toLocationId, note }, 'Michael Amos');
+      await createStockTransfer({ productId, quantity, fromLocationId, toLocationId, note }, getActorName());
       toast.success('Stock transferred.');
       modal.close();
       refreshTable();

@@ -4,6 +4,7 @@
  * lets the owner receive it later — which is the only action that
  * touches stock, via purchase-orders.service.js -> inventory.service.js.
  */
+import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import {
   listPurchaseOrders, createPurchaseOrder, receivePurchaseOrder, cancelPurchaseOrder,
@@ -82,7 +83,7 @@ function wireRowActions() {
           const ok = await modal.confirm({ title: 'Receive this purchase order?', message: 'This adds every line item\'s quantity to shared inventory and cannot be undone.', danger: false, confirmLabel: 'Receive' });
           if (!ok) return;
           try {
-            await receivePurchaseOrder(id, 'Michael Amos');
+            await receivePurchaseOrder(id, getActorName());
             toast.success('Purchase order received — inventory updated.');
             refreshTable();
           } catch (err) { toast.danger(err.message); }
@@ -95,7 +96,7 @@ function wireRowActions() {
           const ok = await modal.confirm({ title: 'Cancel this purchase order?', message: 'This cannot be undone.' });
           if (!ok) return;
           try {
-            await cancelPurchaseOrder(id, 'Michael Amos');
+            await cancelPurchaseOrder(id, getActorName());
             toast.success('Purchase order cancelled.');
             refreshTable();
           } catch (err) { toast.danger(err.message); }
@@ -225,7 +226,7 @@ function openCreateModal() {
         supplierId, items: validItems,
         expectedDate: el.querySelector('#f-expected').value || null,
         notes: el.querySelector('#f-notes').value.trim(),
-      }, 'Michael Amos');
+      }, getActorName());
       toast.success('Purchase order created.');
       modal.close();
       refreshTable();

@@ -12,6 +12,11 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ---- Auth gate: app pages (body[data-page]) stay invisible until bootstrapApp()
+   has confirmed a Supabase session and adds .auth-ready, so a signed-out
+   visitor never sees a flash of the dashboard shell before the redirect. ---- */
+body[data-page]:not(.auth-ready) { visibility: hidden; }
+
 /* ---- Skip link: invisible until keyboard-focused, then jumps above the
    sidebar so keyboard users don't have to tab through 20 nav links to
    reach page content. ---- */

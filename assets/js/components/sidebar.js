@@ -5,6 +5,8 @@
  */
 import { NAV_GROUPS } from '../config/nav.config.js';
 import { getActivePage } from '../utils/helpers.js';
+import { displayNameFor, signOut } from '../services/auth.service.js';
+import { initials } from '../utils/formatters.js';
 
 function renderGroup(group, activeKey) {
   const links = group.items.map((item) => `
@@ -56,4 +58,22 @@ export function initSidebarToggle() {
   const syncForViewport = () => { if (mq.matches) drawer.classList.remove('-translate-x-full'); };
   mq.addEventListener('change', syncForViewport);
   syncForViewport();
+}
+
+/** Fills the sidebar footer with whoever is signed in and wires the sign-out button. */
+export function renderSidebarUser(user) {
+  const name = displayNameFor(user);
+  // textContent, never innerHTML — a display name is user-supplied.
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  set('sidebar-user-name', name);
+  set('sidebar-user-email', user?.isGuest ? 'Sign-in is off' : (user?.email ?? ''));
+  set('sidebar-user-avatar', initials(name) || '?');
+
+  const btn = document.getElementById('sign-out-btn');
+  // Nothing to sign out of while sign-in is off.
+  if (user?.isGuest) { btn?.remove(); return; }
+  btn?.addEventListener('click', async () => {
+    btn.disabled = true;
+    await signOut();
+  });
 }

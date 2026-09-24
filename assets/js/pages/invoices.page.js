@@ -9,6 +9,7 @@
  * prefilled from that order (used by the Sales and Online Orders
  * detail modals), and `?view=<id>` opens an existing invoice.
  */
+import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import {
   INVOICE_STATUS, DEFAULT_DUE_DAYS, listInvoices, computeInvoiceTotals, effectiveStatus,
@@ -22,8 +23,6 @@ import { initDropdown } from '../components/dropdown.js';
 import { renderStatCards } from '../components/stat-card.js';
 import { formatCurrency, formatDate } from '../utils/formatters.js';
 import { escapeHTML, getQueryParam, setQueryParam } from '../utils/helpers.js';
-
-const ACTOR = 'Michael Amos';
 
 const STATUS_BADGE = {
   draft: 'badge-neutral',
@@ -158,7 +157,7 @@ function rowActionItems(invoice) {
     { label: 'Duplicate', icon: 'fa-copy', onClick: () => openEditor(null, duplicateOf(invoice)) },
   ];
   if (isOpen) items.push({ label: 'Edit', icon: 'fa-pen', onClick: () => openEditor(invoice) });
-  if (invoice.status === INVOICE_STATUS.DRAFT) items.push({ label: 'Mark as Sent', icon: 'fa-paper-plane', onClick: () => runAction(() => markInvoiceSent(invoice.id, ACTOR), 'Invoice marked as sent.') });
+  if (invoice.status === INVOICE_STATUS.DRAFT) items.push({ label: 'Mark as Sent', icon: 'fa-paper-plane', onClick: () => runAction(() => markInvoiceSent(invoice.id, getActorName()), 'Invoice marked as sent.') });
   if (isOpen) items.push({ label: 'Record Payment', icon: 'fa-money-bill-wave', onClick: () => openPaymentModal(invoice) });
 
   if (invoice.status === INVOICE_STATUS.SENT) {
@@ -166,7 +165,7 @@ function rowActionItems(invoice) {
       label: 'Void', icon: 'fa-ban', danger: true,
       onClick: async () => {
         const ok = await modal.confirm({ title: `Void ${invoice.number}?`, message: 'The invoice stays on record but is marked void and can no longer be paid or edited.', confirmLabel: 'Void Invoice' });
-        if (ok) runAction(() => voidInvoice(invoice.id, ACTOR), 'Invoice voided.');
+        if (ok) runAction(() => voidInvoice(invoice.id, getActorName()), 'Invoice voided.');
       },
     });
   }
@@ -175,7 +174,7 @@ function rowActionItems(invoice) {
       label: 'Delete Draft', icon: 'fa-trash', danger: true,
       onClick: async () => {
         const ok = await modal.confirm({ title: `Delete ${invoice.number}?`, message: 'This draft was never sent, so it will be removed permanently.', confirmLabel: 'Delete' });
-        if (ok) runAction(() => deleteDraftInvoice(invoice.id, ACTOR), 'Draft deleted.');
+        if (ok) runAction(() => deleteDraftInvoice(invoice.id, getActorName()), 'Draft deleted.');
       },
     });
   }
@@ -369,8 +368,8 @@ function openEditor(existing = null, prefill = null) {
 
     try {
       const saved = existing
-        ? await updateInvoice(existing.id, data, { markSent }, ACTOR)
-        : await createInvoice(data, { markSent }, ACTOR);
+        ? await updateInvoice(existing.id, data, { markSent }, getActorName())
+        : await createInvoice(data, { markSent }, getActorName());
       toast.success(existing ? `${saved.number} updated.` : `${saved.number} created.`);
       modal.close();
       await refresh();
@@ -514,7 +513,7 @@ function openPaymentModal(invoice) {
     `,
   });
   el.querySelector('#confirm-paid').addEventListener('click', () =>
-    runAction(() => markInvoicePaid(invoice.id, el.querySelector('#f-method').value, ACTOR), `${invoice.number} marked as paid.`));
+    runAction(() => markInvoicePaid(invoice.id, el.querySelector('#f-method').value, getActorName()), `${invoice.number} marked as paid.`));
 }
 
 // ---------------------------------------------------------------------
@@ -636,7 +635,7 @@ function openViewModal(invoice) {
     emailInvoice(invoice);
     if (invoice.status === INVOICE_STATUS.DRAFT) {
       const ok = await modal.confirm({ title: 'Mark as sent?', message: `Your email app should have opened with ${escapeHTML(invoice.number)}. Mark it as sent so its due date is tracked?`, confirmLabel: 'Mark as Sent', danger: false });
-      if (ok) runAction(() => markInvoiceSent(invoice.id, ACTOR), 'Invoice marked as sent.');
+      if (ok) runAction(() => markInvoiceSent(invoice.id, getActorName()), 'Invoice marked as sent.');
     }
   });
 }

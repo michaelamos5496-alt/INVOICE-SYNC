@@ -374,6 +374,59 @@ changes through `inventory.service.js`.
   injected at runtime by `app.js`, so branding/layout changes are made
   once, not across 20+ page files.
 
+## Authentication (Supabase)
+
+> **Sign-in is currently OFF.** `AUTH_REQUIRED` in
+> `assets/js/config/supabase.config.js` is `false`, so the app opens
+> straight to the dashboard, Supabase is never contacted, and the sidebar
+> shows `GUEST_NAME`. Everything below describes what happens once you set
+> it to `true` (after completing the one-time setup).
+
+With `AUTH_REQUIRED = true`, every app page is behind a Supabase Auth session. `bootstrapApp()`
+(`assets/js/app.js`) calls `requireSession()` from
+`services/auth.service.js` first: signed-out visitors are redirected to
+`pages/login.html?next=<page>` and the page never initialises (the shell
+stays hidden via `body[data-page]:not(.auth-ready)` in `main.css`, so
+there's no flash of the dashboard). After signing in you land on the page
+you originally asked for. `next` is validated to be a same-site path, so
+it can't be used as an open redirect.
+
+`login.html` is one card with four modes: sign in, create account (email
+confirmation supported), forgot password, and set-a-new-password (reached
+from the emailed reset link). The sidebar footer shows the signed-in
+user's name and email with a **Sign out** button; signing out in one tab
+signs out every open tab. Activity logs and stock movements are now
+attributed to the signed-in user instead of a hardcoded name
+(`getActorName()`).
+
+### One-time setup
+
+1. Create a project at [supabase.com](https://supabase.com) → **Project Settings → API**.
+2. Paste the **Project URL** and **anon public** key into
+   `assets/js/config/supabase.config.js`. The anon key is designed to be
+   public and is safe to commit. **Never** use the `service_role` key here.
+3. **Authentication → URL Configuration:** set *Site URL* to your deployed
+   address (e.g. your Vercel URL) and add these to *Redirect URLs* —
+   `https://YOUR-DOMAIN/pages/login.html` and
+   `http://localhost:8080/pages/login.html` for local dev. Without this,
+   confirmation and password-reset emails link to the wrong place.
+4. **Authentication → Sign In / Providers → Email:** decide whether to keep
+   *Confirm email* on (recommended). To make the app invite-only, turn off
+   *Allow new users to sign up*, set `ALLOW_SIGNUP = false` in the config
+   file (hides the button), and invite staff from **Authentication → Users**.
+
+Then set `AUTH_REQUIRED = true`. If you turn it on before step 2 is done, the
+login page shows a setup notice and the app stays locked — the guard fails
+closed. Supabase's free plan needs no card; to avoid its rate-limited emails,
+turn sign-ups off and add staff yourself under **Authentication → Users → Add user**.
+
+**What this does and doesn't protect.** The app is a static site and
+business data still lives in each browser's `localStorage` (Phase 10 moves
+it to a backend), so today the guard controls who can *use the UI*. Real
+data-level enforcement will come from Row Level Security policies on
+Supabase tables when the `rest`/`supabase` data adapter is built. Roles
+(`ROLE_PERMISSIONS`) remain display-only for now.
+
 ## Core modules (navigation)
 
 Overview: Dashboard, Notifications, Activity Logs
@@ -382,6 +435,7 @@ Inventory: Inventory, Purchase Orders, Stock Transfers, Warehouse
 Sales: POS, Sales, Invoices, Online Orders, Returns, Customers
 Insights: Reports, Analytics
 Organization: Employees, Settings
+Public: Login (`pages/login.html`)
 
 Adding a 21st module: add one entry to `assets/js/config/nav.config.js`
 and one HTML page under `pages/` using the existing page shell — no

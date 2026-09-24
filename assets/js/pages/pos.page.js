@@ -5,6 +5,7 @@
  * survive a refresh). Every finalized sale goes through pos.service.js's
  * checkout(), which is the only thing allowed to deduct stock here.
  */
+import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import { checkout, computeCartTotals } from '../services/pos.service.js';
 import { getSettings } from '../services/settings.service.js';
@@ -283,7 +284,7 @@ function openPaymentModal() {
         paymentMethod: PAYMENT_METHODS[activeMethod.toUpperCase()] ?? activeMethod,
         payments, notes: document.getElementById('pos-notes').value.trim(),
         discountPercent: getDiscountPercent(), taxPercent: getTaxPercent(),
-      }, 'Michael Amos');
+      }, getActorName());
 
       modal.close();
       openReceiptModal(sale);

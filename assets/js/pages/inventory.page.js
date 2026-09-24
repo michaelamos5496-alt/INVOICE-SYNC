@@ -7,6 +7,7 @@
  * / applyStockCount — this page never writes stockQuantity itself, for the
  * same "one shared inventory" reason products.service.js doesn't either.
  */
+import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import { adjustStock, applyStockCount, getProductHistory, computeStockStatus } from '../services/inventory.service.js';
 import { STOCK_MOVEMENT_TYPES, CHANNELS } from '../config/constants.js';
@@ -179,11 +180,11 @@ function openStockModal(product, mode) {
 
     try {
       if (mode === 'add') {
-        await adjustStock({ productId: product.id, delta: qty, type: STOCK_MOVEMENT_TYPES.RESTOCK, channel: CHANNELS.PHYSICAL, note, actor: 'Michael Amos' });
+        await adjustStock({ productId: product.id, delta: qty, type: STOCK_MOVEMENT_TYPES.RESTOCK, channel: CHANNELS.PHYSICAL, note, actor: getActorName() });
       } else if (mode === 'remove') {
-        await adjustStock({ productId: product.id, delta: -qty, type: STOCK_MOVEMENT_TYPES.ADJUSTMENT, channel: CHANNELS.PHYSICAL, note, actor: 'Michael Amos' });
+        await adjustStock({ productId: product.id, delta: -qty, type: STOCK_MOVEMENT_TYPES.ADJUSTMENT, channel: CHANNELS.PHYSICAL, note, actor: getActorName() });
       } else {
-        await applyStockCount({ productId: product.id, countedQuantity: qty, actor: 'Michael Amos' });
+        await applyStockCount({ productId: product.id, countedQuantity: qty, actor: getActorName() });
       }
       toast.success(`${copy.title} recorded.`);
       modal.close();
@@ -278,7 +279,7 @@ async function handleImportFile(e) {
     }
   }
 
-  await api.activityLog.create({ actor: 'Michael Amos', action: 'Bulk imported inventory', target: `${created} created, ${updated} updated` });
+  await api.activityLog.create({ actor: getActorName(), action: 'Bulk imported inventory', target: `${created} created, ${updated} updated` });
   toast.success(`Import complete: ${created} product(s) created, ${updated} updated.`);
   refreshTable();
 }

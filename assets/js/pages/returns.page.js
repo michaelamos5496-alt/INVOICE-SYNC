@@ -4,6 +4,7 @@
  * online order), so the form is order-first: pick the order, pick which
  * item within it, pick a quantity up to what was originally bought.
  */
+import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import { createReturn, listReturns } from '../services/returns.service.js';
 import { CHANNELS } from '../config/constants.js';
@@ -125,7 +126,7 @@ function openCreateModal() {
       await createReturn({
         orderId: order.id, orderType: order.orderType, productId: item.productId, productName: item.name,
         quantity, reason: el.querySelector('#f-reason').value.trim(), channel: order.channel,
-      }, 'Michael Amos');
+      }, getActorName());
       toast.success('Return processed — stock restored.');
       modal.close();
       refreshTable();
