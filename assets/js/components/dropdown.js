@@ -35,8 +35,15 @@ export function initDropdown(triggerEl, items, { align = 'right' } = {}) {
     if (returnFocus) triggerEl.focus();
   };
 
-  // The menu is position:fixed, so it would float in place while the page scrolls under it.
-  const onViewportChange = (e) => { if (!menu?.contains(e.target)) close(); };
+  // The menu is position:fixed, so it would float in place if its button moved (page scroll, rotation,
+  // layout change). Close only when the button has actually moved — a stray scroll/resize event that
+  // fires right after opening (e.g. the page nudging to reveal the button) must not dismiss the menu.
+  let openedAt = null;
+  const onViewportChange = (e) => {
+    if (!menu || menu.contains(e.target)) return;
+    const now = triggerEl.getBoundingClientRect();
+    if (!openedAt || Math.abs(now.top - openedAt.top) > 1 || Math.abs(now.left - openedAt.left) > 1) close();
+  };
 
   const onOutsideClick = (e) => {
     if (!e.target.closest('.dropdown-menu') && e.target !== triggerEl && !triggerEl.contains(e.target)) close();
@@ -79,6 +86,7 @@ export function initDropdown(triggerEl, items, { align = 'right' } = {}) {
     document.body.appendChild(menu);
     triggerEl.setAttribute('aria-expanded', 'true');
     const triggerRect = triggerEl.getBoundingClientRect();
+    openedAt = { top: triggerRect.top, left: triggerRect.left };
     const menuRect = menu.getBoundingClientRect();
     menu.style.position = 'fixed';
     // Keep the menu on-screen: open upward when there isn't room below

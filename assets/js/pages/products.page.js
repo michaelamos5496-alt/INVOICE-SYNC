@@ -13,7 +13,7 @@ import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import {
   listProducts, createProduct, updateProduct, deleteProduct, duplicateProduct,
-  generateBarcode, generateSKU,
+  generateBarcode, generateSKU, variantLabel,
 } from '../services/products.service.js';
 import { DataTable } from '../components/table.js';
 import { modal } from '../components/modal.js';
@@ -170,32 +170,77 @@ function selectOptions(list, selectedId) {
     list.map((item) => `<option value="${item.id}" ${item.id === selectedId ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('');
 }
 
+/** Heading shown above each variant card — the variant's name, or a prompt while it has none. */
+function variantTitleHTML(variant, index) {
+  const name = variantLabel(variant);
+  return `Variant ${index + 1} · ${name ? `<span class="font-medium">${escapeHTML(name)}</span>` : '<span class="font-normal text-[var(--text-muted)]">needs a name</span>'}`;
+}
+
 function renderVariantRows() {
   const container = document.getElementById('variant-rows');
   if (!container) return;
+
+  // Every input gets a real visible <label> (placeholders vanish once you type, and a
+  // bare "+/- price" doesn't say what it changes). Two columns on phones, six from sm up.
+  const field = (i, key, label, { span = '', type = 'text', value, placeholder = '', min = '', hint = '' } = {}) => `
+    <div class="${span}">
+      <label class="field-label" for="variant-${i}-${key}">${label}</label>
+      <input id="variant-${i}-${key}" class="input" type="${type}" value="${escapeHTML(value ?? '')}" placeholder="${placeholder}" ${min !== '' ? `min="${min}"` : ''} ${type === 'number' ? 'step="any" inputmode="decimal"' : ''} data-variant-field="${key}" ${hint ? `aria-describedby="variant-${i}-${key}-hint"` : ''} />
+      ${hint ? `<p id="variant-${i}-${key}-hint" class="field-hint">${hint}</p>` : ''}
+    </div>`;
+
   container.innerHTML = variantState.length
     ? variantState.map((v, i) => `
-        <div class="grid grid-cols-12 gap-2 items-center" data-variant-row="${i}">
-          <input class="input col-span-3" placeholder="Color" value="${escapeHTML(v.color ?? '')}" data-variant-field="color" />
-          <input class="input col-span-2" placeholder="Size" value="${escapeHTML(v.size ?? '')}" data-variant-field="size" />
-          <input class="input col-span-3" placeholder="SKU suffix" value="${escapeHTML(v.skuSuffix ?? '')}" data-variant-field="skuSuffix" />
-          <input class="input col-span-2" type="number" placeholder="Stock" value="${v.stock ?? 0}" data-variant-field="stock" />
-          <input class="input col-span-1" type="number" placeholder="+/- price" value="${v.priceAdjustment ?? 0}" data-variant-field="priceAdjustment" />
-          <button type="button" class="btn btn-ghost btn-icon col-span-1" data-remove-variant="${i}" aria-label="Remove variant"><i class="fa-solid fa-xmark"></i></button>
-        </div>`).join('')
+        <fieldset class="variant-card" data-variant-row="${i}">
+          <legend class="sr-only">Variant ${i + 1}</legend>
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <p class="text-sm font-semibold" data-variant-title>${variantTitleHTML(v, i)}</p>
+            <button type="button" class="btn btn-ghost btn-sm" data-remove-variant="${i}" aria-label="Remove variant ${i + 1}"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Remove</button>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-6 gap-3">
+            ${field(i, 'color', 'Color', { span: 'sm:col-span-2', value: v.color, placeholder: 'e.g. Red' })}
+            ${field(i, 'size', 'Size', { span: 'sm:col-span-1', value: v.size, placeholder: 'e.g. M' })}
+            ${field(i, 'skuSuffix', 'SKU suffix', { span: 'sm:col-span-1', value: v.skuSuffix, placeholder: '-RED-M' })}
+            ${field(i, 'stock', 'Stock', { span: 'sm:col-span-1', type: 'number', value: v.stock ?? 0, min: 0 })}
+            ${field(i, 'priceAdjustment', 'Price change', { span: 'col-span-2 sm:col-span-1', type: 'number', value: v.priceAdjustment ?? 0, hint: 'Added to the price. Use − to reduce.' })}
+          </div>
+          <p class="field-error hidden" data-variant-error role="alert">Give this variant a color or a size so you can tell it apart.</p>
+        </fieldset>`).join('')
     : `<p class="text-sm text-[var(--text-muted)]">No variants yet. Add one for products sold by color/size (e.g. apparel).</p>`;
 
   container.querySelectorAll('[data-variant-field]').forEach((input) => {
     const row = input.closest('[data-variant-row]');
     const idx = Number(row.dataset.variantRow);
     input.addEventListener('input', () => {
-      const field = input.dataset.variantField;
-      variantState[idx][field] = ['stock', 'priceAdjustment'].includes(field) ? Number(input.value) : input.value;
+      const key = input.dataset.variantField;
+      variantState[idx][key] = ['stock', 'priceAdjustment'].includes(key) ? Number(input.value) : input.value;
+      if (key === 'color' || key === 'size') {
+        // Update the heading in place (a full re-render would drop focus mid-typing) and clear any error.
+        row.querySelector('[data-variant-title]').innerHTML = variantTitleHTML(variantState[idx], idx);
+        if (variantLabel(variantState[idx])) clearVariantError(row);
+      }
     });
   });
   container.querySelectorAll('[data-remove-variant]').forEach((btn) => {
     btn.addEventListener('click', () => { variantState.splice(Number(btn.dataset.removeVariant), 1); renderVariantRows(); });
   });
+}
+
+function clearVariantError(row) {
+  row.querySelectorAll('[data-variant-field="color"], [data-variant-field="size"]').forEach((input) => input.removeAttribute('aria-invalid'));
+  row.querySelector('[data-variant-error]')?.classList.add('hidden');
+}
+
+/** Sends the user to the first variant with no name: opens the tab, marks the fields, and focuses one. */
+function flagUnnamedVariant(modalEl, index) {
+  modalEl.querySelector('[data-tab="variants"]')?.click();
+  const row = modalEl.querySelector(`[data-variant-row="${index}"]`);
+  if (!row) return;
+  row.querySelectorAll('[data-variant-field="color"], [data-variant-field="size"]').forEach((input) => input.setAttribute('aria-invalid', 'true'));
+  row.querySelector('[data-variant-error]')?.classList.remove('hidden');
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  row.querySelector('[data-variant-field="color"]')?.focus({ preventScroll: true });
+  toast.danger(`Variant ${index + 1} needs a name — enter a color or a size.`);
 }
 
 const MAX_IMAGES = 6;
@@ -414,7 +459,8 @@ function buildFormHTML(product) {
       </div>
 
       <div data-tab-panel="variants" class="hidden space-y-3">
-        <div id="variant-rows" class="space-y-2"></div>
+        <p class="text-sm text-[var(--text-secondary)]">Name each variant by its color, its size, or both — for example <em>Red / M</em>. Stock and price change are per variant.</p>
+        <div id="variant-rows" class="space-y-3"></div>
         <button type="button" id="add-variant" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Add Variant</button>
       </div>
 
@@ -468,7 +514,13 @@ export function openProductModal(product = null) {
 
   el.querySelector('#f-sku-gen').addEventListener('click', () => { el.querySelector('#f-sku').value = generateSKU('SKU'); });
   el.querySelector('#f-barcode-gen').addEventListener('click', () => { el.querySelector('#f-barcode').value = generateBarcode(); });
-  el.querySelector('#add-variant').addEventListener('click', () => { variantState.push({ color: '', size: '', skuSuffix: '', stock: 0, priceAdjustment: 0 }); renderVariantRows(); });
+  el.querySelector('#add-variant').addEventListener('click', () => {
+    variantState.push({ color: '', size: '', skuSuffix: '', stock: 0, priceAdjustment: 0 });
+    renderVariantRows();
+    const last = el.querySelector(`[data-variant-row="${variantState.length - 1}"]`);
+    last?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    last?.querySelector('[data-variant-field="color"]')?.focus({ preventScroll: true });
+  });
   // ---- photos ----
   const fileInput = el.querySelector('#f-image-files');
   fileInput.addEventListener('change', () => { addImageFiles(fileInput.files); fileInput.value = ''; });
@@ -503,6 +555,8 @@ export function openProductModal(product = null) {
       toast.danger('Product name, SKU and selling price are required.');
       return;
     }
+    const unnamedAt = variantState.findIndex((variant) => !variantLabel(variant));
+    if (unnamedAt !== -1) { flagUnnamedVariant(el, unnamedAt); return; }
     if (imageState.some((entry) => entry.processing)) {
       toast.info('Your photos are still being processed — try again in a moment.');
       return;

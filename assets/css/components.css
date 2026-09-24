@@ -491,3 +491,16 @@ html.modal-open { overflow: hidden; }
 @media (pointer: coarse) {
   .image-tile__btn { width: 2.25rem; height: 2.25rem; font-size: 0.8rem; }
 }
+
+/* ---------------------------------------------------------------------- */
+/* Variant cards (product form → Variants tab)                              */
+/* ---------------------------------------------------------------------- */
+.variant-card {
+  min-width: 0; margin: 0;
+  padding: 0.875rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface-sunken) 55%, transparent);
+}
+.input[aria-invalid="true"] { border-color: var(--color-danger-500); }
+.input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger-500) 18%, transparent); }

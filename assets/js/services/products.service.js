@@ -24,6 +24,31 @@ export function generateBarcode() {
 
 export { generateSKU };
 
+/** A variant's display name — its color and/or size, e.g. "Red / M". Empty when it has neither. */
+export function variantLabel(variant) {
+  return [variant?.color, variant?.size].map((part) => String(part ?? '').trim()).filter(Boolean).join(' / ');
+}
+
+/**
+ * Cleans up a product's variants for saving: trims text and coerces the
+ * numbers. Every variant must be named (a color, a size, or both) —
+ * otherwise nothing tells you which one is which later, in the product
+ * form, on inventory screens, or in reports — so an unnamed one throws
+ * instead of being saved.
+ */
+export function normalizeVariants(variants = []) {
+  return variants.map((variant, index) => {
+    if (!variantLabel(variant)) throw new Error(`Variant ${index + 1} needs a name — enter a color or a size.`);
+    return {
+      color: String(variant.color ?? '').trim(),
+      size: String(variant.size ?? '').trim(),
+      skuSuffix: String(variant.skuSuffix ?? '').trim(),
+      stock: Number(variant.stock) || 0,
+      priceAdjustment: Number(variant.priceAdjustment) || 0,
+    };
+  });
+}
+
 export async function listProducts() {
   return api.products.list();
 }
@@ -39,6 +64,7 @@ export async function getProduct(id) {
  */
 export async function createProduct(formData, actor = 'system') {
   const { stockQuantity = 0, ...rest } = formData;
+  if (rest.variants) rest.variants = normalizeVariants(rest.variants);
   const product = await api.products.create({
     ...rest,
     stockQuantity: 0,
@@ -71,6 +97,7 @@ export async function updateProduct(id, formData, actor = 'system') {
   if (!current) throw new Error(`Product ${id} not found`);
 
   const { stockQuantity, ...rest } = formData;
+  if (rest.variants) rest.variants = normalizeVariants(rest.variants);
   await api.products.update(id, rest);
 
   // Photos the user removed in this edit are now unreferenced — free their storage.
@@ -99,8 +126,11 @@ export async function duplicateProduct(id, actor = 'system') {
   const { id: _id, createdAt, updatedAt, ...rest } = original;
   // Each product owns its photos, so the copy gets its own — deleting one later must not break the other.
   const images = (await Promise.all((original.images ?? []).map(cloneImage))).filter(Boolean);
+  // Variants saved before names were required get a placeholder name so the copy can be saved.
+  const variants = (original.variants ?? []).map((v, i) => (variantLabel(v) ? v : { ...v, color: `Variant ${i + 1}` }));
   return createProduct({
     ...rest,
+    variants,
     images,
     name: `${original.name} (Copy)`,
     sku: generateSKU('SKU'),
