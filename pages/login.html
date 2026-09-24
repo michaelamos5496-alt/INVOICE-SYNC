@@ -51,7 +51,7 @@
         <span class="auth-mark inline-grid place-items-center w-14 h-14 rounded-2xl">
           <i class="fa-solid fa-cubes text-white text-xl" aria-hidden="true"></i>
         </span>
-        <p class="font-display text-2xl font-bold mt-3">InvSync</p>
+        <p data-brand-name class="font-display text-2xl font-bold mt-3">InvSync</p>
         <p class="text-sm text-[var(--text-secondary)]">Unified Inventory Management</p>
       </div>
 
@@ -89,10 +89,18 @@
             <input id="f-confirm" class="input" type="password" autocomplete="new-password" placeholder="••••••••" />
           </div>
 
-          <button id="auth-submit" type="submit" class="btn btn-primary w-full btn-lg">
+          <button id="auth-submit" type="submit" class="btn btn-primary w-full btn-lg" data-modes="signin signup forgot recover">
             <span id="auth-submit-label">Sign in</span>
           </button>
         </form>
+
+        <!-- Shown instead of the form when someone is signed in but can't use the app yet (mode "verify" or "pending"). -->
+        <div id="auth-panel" class="mt-5 space-y-3" hidden>
+          <p id="auth-panel-text" class="text-sm text-[var(--text-secondary)]"></p>
+          <button id="panel-primary" type="button" class="btn btn-primary w-full btn-lg"></button>
+          <button id="panel-secondary" type="button" class="btn btn-secondary w-full"></button>
+          <button id="panel-signout" type="button" class="btn btn-ghost w-full"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sign out</button>
+        </div>
       </div>
 
       <p class="text-center text-sm text-[var(--text-secondary)] mt-5" id="auth-switch"></p>

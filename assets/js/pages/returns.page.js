@@ -4,6 +4,7 @@
  * online order), so the form is order-first: pick the order, pick which
  * item within it, pick a quantity up to what was originally bought.
  */
+import { watchData } from '../services/live-data.js';
 import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import { createReturn, listReturns } from '../services/returns.service.js';
@@ -18,14 +19,13 @@ let table;
 let orders = []; // combined sales + online orders, tagged with orderType/channel
 
 export async function initReturnsPage() {
-  const [sales, onlineOrders] = await Promise.all([api.sales.list(), api.onlineOrders.list()]);
-  orders = [
-    ...sales.map((s) => ({ ...s, orderType: 'sale', channel: CHANNELS.PHYSICAL })),
-    ...onlineOrders.map((o) => ({ ...o, orderType: 'online_order', channel: CHANNELS.ONLINE })),
-  ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  await loadOrders();
 
   buildTable();
   await refreshTable();
+
+  watchData(['returns'], refreshTable);
+  watchData(['sales', 'onlineOrders'], async () => { await loadOrders(); await refreshTable(); });
 
   document.getElementById('new-return-btn').addEventListener('click', () => openCreateModal());
 }
@@ -50,6 +50,14 @@ function buildTable() {
       actionLabel: 'New Return', onAction: () => openCreateModal(),
     },
   });
+}
+
+async function loadOrders() {
+  const [sales, onlineOrders] = await Promise.all([api.sales.list(), api.onlineOrders.list()]);
+  orders = [
+    ...sales.map((s) => ({ ...s, orderType: 'sale', channel: CHANNELS.PHYSICAL })),
+    ...onlineOrders.map((o) => ({ ...o, orderType: 'online_order', channel: CHANNELS.ONLINE })),
+  ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
 async function refreshTable() {

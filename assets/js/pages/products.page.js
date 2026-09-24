@@ -9,6 +9,7 @@
  * which reads a lot more clearly as a module than as one giant template
  * literal in an HTML file.
  */
+import { watchData } from '../services/live-data.js';
 import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import {
@@ -23,7 +24,7 @@ import { initDropdown } from '../components/dropdown.js';
 import { formatCurrency } from '../utils/formatters.js';
 import { debounce, escapeHTML, isSafeImageUrl } from '../utils/helpers.js';
 import { compressImage } from '../utils/image-compress.js';
-import { saveImage, deleteImages, isIdbRef, imageTagHTML, hydrateImages } from '../services/image-store.service.js';
+import { saveImage, deleteImages, isStoredRef, imageTagHTML, hydrateImages } from '../services/image-store.service.js';
 
 const STATUS_BADGE = {
   active: 'badge-success',
@@ -43,14 +44,15 @@ let variantState = [];
 let imageState = [];
 
 export async function initProductsPage() {
-  const [categories, brands, suppliers, warehouses] = await Promise.all([
-    api.categories.list(), api.brands.list(), api.suppliers.list(), api.warehouses.list(),
-  ]);
-  lookups = { categories, brands, suppliers, warehouses };
+  await reloadLookups();
 
   populateFilterOptions();
   buildTable();
   await refreshTable();
+
+  // Live: another device adds/changes products or the lists they belong to.
+  watchData(['products'], refreshTable);
+  watchData(['categories', 'brands', 'suppliers', 'warehouses'], async () => { await reloadLookups(); populateFilterOptions(); await refreshTable(); });
 
   document.getElementById('add-product-btn').addEventListener('click', () => openProductModal());
   document.getElementById('product-search').addEventListener('input', debounce((e) => table.setSearchTerm(e.target.value), 200));
@@ -65,10 +67,19 @@ export async function initProductsPage() {
   });
 }
 
+async function reloadLookups() {
+  const [categories, brands, suppliers, warehouses] = await Promise.all([
+    api.categories.list(), api.brands.list(), api.suppliers.list(), api.warehouses.list(),
+  ]);
+  lookups = { categories, brands, suppliers, warehouses };
+}
+
 function populateFilterOptions() {
   const categorySelect = document.getElementById('filter-category');
+  const selected = categorySelect.value; // a live refresh must not reset what the user picked
   categorySelect.innerHTML = '<option value="">All Categories</option>' +
     lookups.categories.map((c) => `<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('');
+  categorySelect.value = selected;
 }
 
 function lookupName(list, id) {
@@ -116,7 +127,7 @@ function buildTable() {
       },
     ],
     pageSize: 8,
-    onRender: hydrateImages,
+    onRender: (tbody) => { hydrateImages(tbody); wireRowActions(); }, // row menus must be re-attached every time the rows are redrawn (paging, sorting, live updates)
     searchKeys: ['name', 'sku', 'barcode'],
     rowKey: (row) => row.id,
     defaultSort: { key: 'name', dir: 'asc' },
@@ -138,7 +149,6 @@ async function refreshTable() {
   if (statusFilter) products = products.filter((p) => p.status === statusFilter);
 
   table.setData(products);
-  wireRowActions();
 }
 
 function wireRowActions() {
@@ -271,7 +281,7 @@ function buildImageTile(entry, index) {
   img.className = 'image-tile__img';
   img.alt = `Product photo ${index + 1}`;
   if (typeof entry !== 'string') img.src = entry.previewUrl;
-  else if (isIdbRef(entry)) { img.dataset.imgRef = entry; img.dataset.imgFallback = 'fa-solid fa-image text-[var(--text-muted)]'; }
+  else if (isStoredRef(entry)) { img.dataset.imgRef = entry; img.dataset.imgFallback = 'fa-solid fa-image text-[var(--text-muted)]'; }
   else if (isSafeImageUrl(entry)) img.src = entry;
   img.addEventListener('error', () => { img.removeAttribute('src'); tile.classList.add('image-tile--broken'); });
   tile.append(img);

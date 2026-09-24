@@ -4,6 +4,7 @@
  * lets the owner receive it later — which is the only action that
  * touches stock, via purchase-orders.service.js -> inventory.service.js.
  */
+import { watchData } from '../services/live-data.js';
 import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import {
@@ -27,11 +28,13 @@ let lookups = { suppliers: [], products: [] };
 let lineItems = [];
 
 export async function initPurchaseOrdersPage() {
-  const [suppliers, products] = await Promise.all([api.suppliers.list(), api.products.list()]);
-  lookups = { suppliers, products };
+  await reloadLookups();
 
   buildTable();
   await refreshTable();
+
+  watchData(['purchaseOrders'], refreshTable);
+  watchData(['suppliers', 'products'], async () => { await reloadLookups(); await refreshTable(); });
 
   document.getElementById('create-po-btn').addEventListener('click', () => openCreateModal());
 }
@@ -55,6 +58,7 @@ function buildTable() {
       },
     ],
     pageSize: 8,
+    onRender: wireRowActions, // row menus must be re-attached every time the rows are redrawn (paging, sorting, live updates)
     searchKeys: [],
     rowKey: (row) => row.id,
     defaultSort: { key: 'expectedDate', dir: 'desc' },
@@ -66,10 +70,14 @@ function buildTable() {
   });
 }
 
+async function reloadLookups() {
+  const [suppliers, products] = await Promise.all([api.suppliers.list(), api.products.list()]);
+  lookups = { suppliers, products };
+}
+
 async function refreshTable() {
   table.setLoading();
   table.setData(await listPurchaseOrders());
-  wireRowActions();
 }
 
 function wireRowActions() {

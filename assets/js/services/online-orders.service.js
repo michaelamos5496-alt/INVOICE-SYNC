@@ -12,8 +12,8 @@
  * that point (stock deduction, notification, activity log) is exactly
  * what a real webhook handler would do with the payload it received.
  */
-import { api } from './api.service.js';
-import { deductForSale, restockFromReturn } from './inventory.service.js';
+import { api, generateId } from './api.service.js';
+import { deductForSale, restockFromReturn, putStockBack } from './inventory.service.js';
 import { CHANNELS, ORDER_STATUS } from '../config/constants.js';
 import { formatCurrency } from '../utils/formatters.js';
 
@@ -38,13 +38,24 @@ export async function createOnlineOrder({ customerId, items, notes = '' }, actor
   await assertStockAvailable(items);
 
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const order = await api.onlineOrders.create({
-    channel: CHANNELS.ONLINE, customerId: customerId || null, items, total,
-    status: ORDER_STATUS.PROCESSING, notes,
-  });
 
-  for (const item of items) {
-    await deductForSale({ productId: item.productId, quantity: item.quantity, channel: CHANNELS.ONLINE, orderId: order.id, actor });
+  // Take the stock first (atomically, one line at a time); if any line fails, put back what was taken
+  // and record no order — same rule as the POS, since both channels share one stock number.
+  const orderId = generateId('onl');
+  const taken = [];
+  let order;
+  try {
+    for (const item of items) {
+      await deductForSale({ productId: item.productId, quantity: item.quantity, channel: CHANNELS.ONLINE, orderId, actor });
+      taken.push(item);
+    }
+    order = await api.onlineOrders.create({
+      id: orderId, channel: CHANNELS.ONLINE, customerId: customerId || null, items, total,
+      status: ORDER_STATUS.PROCESSING, notes,
+    });
+  } catch (err) {
+    await putStockBack(taken, CHANNELS.ONLINE, orderId, actor);
+    throw err;
   }
 
   const customer = customerId ? await api.customers.get(customerId) : null;
@@ -56,7 +67,10 @@ export async function createOnlineOrder({ customerId, items, notes = '' }, actor
   await api.activityLog.create({ actor, action: 'Received online order', target: `Order #${order.id.slice(-6).toUpperCase()} · ${formatCurrency(total)}` });
 
   if (customer) {
-    await api.customers.update(customerId, { totalOrders: (customer.totalOrders ?? 0) + 1, totalSpent: (customer.totalSpent ?? 0) + total });
+    await api.customers.mutate(customerId, (c) => ({
+      totalOrders: (c.totalOrders ?? 0) + 1,
+      totalSpent: (c.totalSpent ?? 0) + total,
+    })).catch(() => { /* the customer was deleted meanwhile — the order itself is already safe */ });
   }
 
   return order;

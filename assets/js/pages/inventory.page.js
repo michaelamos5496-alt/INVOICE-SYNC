@@ -7,6 +7,7 @@
  * / applyStockCount — this page never writes stockQuantity itself, for the
  * same "one shared inventory" reason products.service.js doesn't either.
  */
+import { watchData } from '../services/live-data.js';
 import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import { adjustStock, applyStockCount, getProductHistory, computeStockStatus } from '../services/inventory.service.js';
@@ -33,14 +34,14 @@ let table;
 let lookups = { categories: [], warehouses: [] };
 
 export async function initInventoryPage() {
-  const [categories, warehouses] = await Promise.all([api.categories.list(), api.warehouses.list()]);
-  lookups = { categories, warehouses };
-
-  document.getElementById('filter-category').innerHTML = '<option value="">All Categories</option>' +
-    categories.map((c) => `<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('');
+  await reloadLookups();
 
   buildTable();
   await refreshTable();
+
+  // Live: stock changes made on other devices (sales, receipts, counts) appear here as they happen.
+  watchData(['products'], refreshTable);
+  watchData(['categories', 'warehouses'], async () => { await reloadLookups(); await refreshTable(); });
 
   document.getElementById('inventory-search').addEventListener('input', debounce((e) => table.setSearchTerm(e.target.value), 200));
   document.getElementById('filter-category').addEventListener('change', refreshTable);
@@ -108,11 +109,23 @@ function buildTable() {
       },
     ],
     pageSize: 8,
+    onRender: wireRowActions, // row menus must be re-attached every time the rows are redrawn (paging, sorting, live updates)
     searchKeys: ['name', 'sku', 'barcode'],
     rowKey: (row) => row.id,
     defaultSort: { key: 'name', dir: 'asc' },
     emptyState: { icon: 'fa-warehouse', title: 'No products to track yet', message: 'Add products from the Products page first.' },
   });
+}
+
+/** Loads categories/warehouses and rebuilds the category filter, keeping whatever the user had selected. */
+async function reloadLookups() {
+  const [categories, warehouses] = await Promise.all([api.categories.list(), api.warehouses.list()]);
+  lookups = { categories, warehouses };
+  const select = document.getElementById('filter-category');
+  const selected = select.value;
+  select.innerHTML = '<option value="">All Categories</option>' +
+    categories.map((c) => `<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('');
+  select.value = selected;
 }
 
 async function refreshTable() {
@@ -125,7 +138,6 @@ async function refreshTable() {
   if (statusFilter) products = products.filter((p) => p.stockStatus === statusFilter);
 
   table.setData(products);
-  wireRowActions();
 }
 
 function wireRowActions() {

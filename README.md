@@ -393,58 +393,114 @@ changes through `inventory.service.js`.
   injected at runtime by `app.js`, so branding/layout changes are made
   once, not across 20+ page files.
 
-## Authentication (Supabase)
+## Live sync & sign-in (Supabase)
 
-> **Sign-in is currently OFF.** `AUTH_REQUIRED` in
-> `assets/js/config/supabase.config.js` is `false`, so the app opens
-> straight to the dashboard, Supabase is never contacted, and the sidebar
-> shows `GUEST_NAME`. Everything below describes what happens once you set
-> it to `true` (after completing the one-time setup).
+> **Sharing is currently OFF.** `CLOUD_SYNC` in `assets/js/config/supabase.config.js`
+> is `false`, so the app works in this browser only, with no login, exactly as
+> before, and Supabase is never contacted. Everything below describes what
+> happens once you switch it on (after the one-time setup).
 
-With `AUTH_REQUIRED = true`, every app page is behind a Supabase Auth session. `bootstrapApp()`
-(`assets/js/app.js`) calls `requireSession()` from
-`services/auth.service.js` first: signed-out visitors are redirected to
-`pages/login.html?next=<page>` and the page never initialises (the shell
-stays hidden via `body[data-page]:not(.auth-ready)` in `main.css`, so
-there's no flash of the dashboard). After signing in you land on the page
-you originally asked for. `next` is validated to be a same-site path, so
-it can't be used as an open redirect.
+With `CLOUD_SYNC = true`, **all business data lives in your Supabase database and is shared live**:
+when anyone adds a product, rings up a sale, receives stock, changes a price or sends an invoice,
+every other open screen — dashboard, inventory, POS, reports… — updates by itself, with no reload.
+Photos are shared too (Supabase Storage). People sign in, and the database itself decides who gets
+in.
 
-`login.html` is one card with four modes: sign in, create account (email
-confirmation supported), forgot password, and set-a-new-password (reached
-from the emailed reset link). The sidebar footer shows the signed-in
-user's name and email with a **Sign out** button; signing out in one tab
-signs out every open tab. Activity logs and stock movements are now
-attributed to the signed-in user instead of a hardcoded name
-(`getActorName()`).
+### How it works
+
+* **One data layer, two back ends.** Pages and services call `api.products.list()` etc.
+  (`services/api.service.js`). With sync off that's localStorage; with sync on the very same
+  calls go to `services/cloud-data.service.js`, which keeps a live in-memory copy of each
+  collection (loaded once, then kept current by Supabase Realtime) and writes through to Postgres.
+  Each collection is one table of JSON documents (`id, data, version, created_at`) — see
+  `supabase/schema.sql`.
+* **Pages refresh themselves.** Each page calls `watchData([...collections], refresh)`
+  (`services/live-data.js`). Refreshes caused by someone else's change are quiet: no loading
+  flash and no jumping back to page 1 while you browse (`utils/live-flag.js`).
+* **Stock is safe with many people at once.** Every stock change is "read, compute, write only
+  if nobody changed it meanwhile, retry otherwise" (`mutate()` → the `merge_doc` function in
+  `schema.sql`). Six checkouts racing for the last three units produce exactly three sales;
+  a checkout that fails halfway puts back what it already took (`pos.service.js`,
+  `online-orders.service.js`). The database also refuses negative stock outright.
+  Editing a record only changes the fields you touched, so renaming a product can't wipe out a
+  stock change someone else just made.
+* **Who gets in — three things, enforced by the database, not just the screens:**
+  1. a login (Supabase Auth), 2. a **confirmed** email address, 3. the email is on the
+  approved-staff list (`staff` table). Anyone can create a login, but until the owner approves
+  it they see nothing and can change nothing. The owner approves people in the app:
+  **Employees → Can sign in**. Only the Shop Owner can change the staff list or the store
+  settings; log entries (activity, stock movements) can be added but never edited or deleted;
+  and the database refuses to remove the last Shop Owner.
+* **Sign-in flow.** `bootstrapApp()` calls `requireSession()` (`services/auth.service.js`) first:
+  people who aren't fully in are sent to `pages/login.html` — which handles sign in, create
+  account, "confirm your email", "waiting for approval", forgot password and choosing a new
+  password — and land back on the page they asked for (`next` is validated, so it can't be used
+  as an open redirect). Being offline is not the same as being signed out: a signed-in person
+  whose connection drops gets a "can't reach your data" screen with **Try again**, not the login
+  page.
+* **Everything typed by a person is escaped before it goes on a screen** (product names, customer
+  names, notes, actor names…). That matters more once data is shared, so one person's text can't
+  run as code on another person's screen — covered by a test that plants hostile text in every
+  kind of record and loads every page.
+* **What's cached where.** Photos downloaded from the shared bucket are cached in the browser
+  and cleared at sign-out. The shop name from Settings is mirrored into localStorage so the login
+  and splash screens can show it before anyone has signed in.
 
 ### One-time setup
 
-1. Create a project at [supabase.com](https://supabase.com) → **Project Settings → API**.
-2. Paste the **Project URL** and **anon public** key into
-   `assets/js/config/supabase.config.js`. The anon key is designed to be
-   public and is safe to commit. **Never** use the `service_role` key here.
-3. **Authentication → URL Configuration:** set *Site URL* to your deployed
-   address (e.g. your Vercel URL) and add these to *Redirect URLs* —
-   `https://YOUR-DOMAIN/pages/login.html` and
-   `http://localhost:8080/pages/login.html` for local dev. Without this,
-   confirmation and password-reset emails link to the wrong place.
-4. **Authentication → Sign In / Providers → Email:** decide whether to keep
-   *Confirm email* on (recommended). To make the app invite-only, turn off
-   *Allow new users to sign up*, set `ALLOW_SIGNUP = false` in the config
-   file (hides the button), and invite staff from **Authentication → Users**.
+1. Create a project at [supabase.com](https://supabase.com) (the free plan needs no card).
+2. **SQL Editor → New query:** paste all of `supabase/schema.sql` and run it. It creates the tables,
+   the security rules, live-update publication and the private photo bucket, and is safe to re-run.
+3. **Add yourself as the first Shop Owner** — at the bottom of that file is one commented
+   `insert into public.staff …` line. Put your email (lowercase) and name in it and run it.
+4. **Project Settings → API:** copy the *Project URL* and the *anon public* key into
+   `assets/js/config/supabase.config.js` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`). The anon key is meant
+   to be public and is safe to commit. **Never** put the `service_role` key anywhere in this repo.
+5. **Authentication → URL Configuration:** set *Site URL* to your deployed address and add
+   `https://YOUR-DOMAIN/pages/login.html` (and `http://localhost:8080/pages/login.html` for local
+   development) to *Redirect URLs*. Without this, confirmation and password-reset emails link to the
+   wrong place.
+6. **Authentication → Sign In / Providers → Email:** keep *Confirm email* on. (The database
+   requires a confirmed email regardless of this setting.) Supabase's built-in email sender is
+   heavily rate-limited — for a real team, set up your own SMTP sender under
+   *Authentication → SMTP Settings*, or add each person yourself under
+   *Authentication → Users → Add user → Auto Confirm*.
+7. Set `CLOUD_SYNC = true`, deploy, then sign up with the email from step 3. If you had data in a
+   browser before, open **Settings → Data → Upload this browser's data** once (records that already
+   exist in the database are never overwritten, and the browser's own copy is kept as a backup).
+8. Add your team under **Employees**, tick **Can sign in**, and ask them to create their login with
+   that email address.
 
-Then set `AUTH_REQUIRED = true`. If you turn it on before step 2 is done, the
-login page shows a setup notice and the app stays locked — the guard fails
-closed. Supabase's free plan needs no card; to avoid its rate-limited emails,
-turn sign-ups off and add staff yourself under **Authentication → Users → Add user**.
+If you turn `CLOUD_SYNC` on before steps 2–4 are done, the login page (or a "database isn't set
+up yet" screen) tells you what's missing and the app stays locked — it fails closed.
 
-**What this does and doesn't protect.** The app is a static site and
-business data still lives in each browser's `localStorage` (Phase 10 moves
-it to a backend), so today the guard controls who can *use the UI*. Real
-data-level enforcement will come from Row Level Security policies on
-Supabase tables when the `rest`/`supabase` data adapter is built. Roles
-(`ROLE_PERMISSIONS`) remain display-only for now.
+### Good to know
+
+* **It needs an internet connection.** Screens you've already opened keep showing what they had
+  and the top bar shows **Offline**, but changes are refused (with a clear message) rather than
+  queued: stock is shared, so a sale recorded later, blind, could oversell what someone else has
+  already sold. Reconnecting re-syncs everything.
+* **Busy history is windowed.** Sales and online orders load the last 45 days, stock movements,
+  activity and notifications the last 30 (older records stay in the database and open by id — for
+  example when processing a return). This keeps screens fast and downloads small as years of
+  history pile up.
+* **Live updates fall back gracefully.** If Realtime can't connect, the top bar says
+  *Connecting…* and screens re-read every 30 seconds instead.
+* **The free Supabase plan** pauses a project after a week with no activity (one click to resume)
+  and doesn't include restorable backups — export what matters now and then.
+* **Changing the store currency or tax rate** on one device shows everyone else a "reload to use
+  them" notice; the shop name updates live.
+* **Clear All Data / Load Sample Data are hidden** while sharing is on — wiping shared data from one
+  screen could hurt everyone. Use the Supabase Table Editor to start over.
+
+### Testing without a Supabase project
+
+`supabase/schema.sql` and the client were tested against a real PostgreSQL 17 and PostgREST 16
+(the REST layer Supabase uses) with small local stand-ins for Supabase's login, storage and
+live-update servers — including two simultaneous "devices", races for the last unit, going
+offline, photos, and the approval flow. Those stand-ins are re-implementations, so the final check
+of any deployment is a quick pass against the real project: sign up, confirm, approve, and watch a
+change appear on a second device.
 
 ## Core modules (navigation)
 

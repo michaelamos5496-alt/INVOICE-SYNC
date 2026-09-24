@@ -5,6 +5,7 @@
  * whenever that customer completes a purchase, not editable by hand.
  * "View Orders" pulls their combined in-store + online history.
  */
+import { watchData } from '../services/live-data.js';
 import { api } from '../services/api.service.js';
 import { DataTable } from '../components/table.js';
 import { modal } from '../components/modal.js';
@@ -36,6 +37,7 @@ export async function initCustomersPage() {
       },
     ],
     pageSize: 8,
+    onRender: wireRowActions, // row menus must be re-attached every time the rows are redrawn (paging, sorting, live updates)
     searchKeys: ['name', 'email', 'phone'],
     rowKey: (row) => row.id,
     defaultSort: { key: 'totalSpent', dir: 'desc' },
@@ -47,6 +49,7 @@ export async function initCustomersPage() {
   });
 
   await refreshTable();
+  watchData(['customers'], refreshTable);
 
   document.getElementById('add-customer-btn').addEventListener('click', () => openFormModal());
   document.getElementById('customer-search').addEventListener('input', debounce((e) => table.setSearchTerm(e.target.value), 200));
@@ -55,7 +58,6 @@ export async function initCustomersPage() {
 async function refreshTable() {
   table.setLoading();
   table.setData(await api.customers.list());
-  wireRowActions();
 }
 
 function wireRowActions() {

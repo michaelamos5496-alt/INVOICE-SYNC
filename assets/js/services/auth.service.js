@@ -1,70 +1,47 @@
 /**
- * auth.service.js — Supabase Auth wrapper. The only module that talks to
- * supabase-js; pages and components use these functions, mirroring how
- * api.service.js is the single door to data.
+ * auth.service.js — sign-in with Supabase Auth. The only module pages and
+ * components use for "who is using the app", mirroring how api.service.js is the
+ * single door to data.
  *
- * supabase-js is loaded lazily from a pinned CDN URL the first time it's
- * needed, so nothing about auth costs anything until a page asks for it.
- * The session lives in localStorage (supabase-js's default) and refreshes
- * itself; `clearAllData()` in reset.service.js only removes InvSync's own
- * business keys, so "Clear data" never signs anyone out.
- *
- * NOTE: this is a static, client-side app, so the guard in app.js gates
- * the UI, not the data — business data still lives in each browser's
- * localStorage until Phase 10 moves it to Supabase tables. Real
- * enforcement will come from Row Level Security policies on those tables.
+ * Two modes, chosen by CLOUD_SYNC in supabase.config.js:
+ *   off → no login; everyone is the local "guest" (GUEST_NAME) and Supabase is never loaded.
+ *   on  → a person gets in only when ALL of these are true (see getAccessState):
+ *           1. they're signed in,
+ *           2. their email address is confirmed, and
+ *           3. the shop owner has approved that email (a row in the database's `staff` table).
+ *         The database enforces (2) and (3) itself through row-level-security rules
+ *         (supabase/schema.sql) — this file just reads the same facts so it can show the
+ *         right screen instead of an error.
  */
-import {
-  AUTH_REQUIRED, GUEST_NAME, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_JS_URL, isSupabaseConfigured,
-} from '../config/supabase.config.js';
+import { CLOUD_SYNC, GUEST_NAME, isSupabaseConfigured } from '../config/supabase.config.js';
+import { getSupabase } from './supabase.service.js';
+import { clearCloudImageCache } from './image-store.service.js';
+import { showConnectionProblem, isConnectionError, connectionProblemFor } from '../components/connection-screen.js';
 
 const LOGIN_PATH = '/pages/login.html';
 const DEFAULT_LANDING = '/pages/dashboard.html';
 
-let clientPromise = null;
 let currentUser = null;
-
-async function getClient() {
-  if (!isSupabaseConfigured()) throw new Error('Supabase isn\'t configured yet. Add your project URL and anon key in assets/js/config/supabase.config.js.');
-  clientPromise ??= import(/* @vite-ignore */ SUPABASE_JS_URL).then(({ createClient }) =>
-    createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'implicit' },
-    }));
-  return clientPromise;
-}
-
-/** Turns Supabase's error messages into something a shop owner can act on. */
-function friendlyError(error) {
-  const message = String(error?.message ?? error ?? 'Something went wrong.');
-  if (/invalid login credentials/i.test(message)) return 'That email and password don\'t match. Check them and try again.';
-  if (/email not confirmed/i.test(message)) return 'Please confirm your email first — check your inbox for the link we sent.';
-  if (/already registered|already been registered/i.test(message)) return 'An account with that email already exists. Try signing in instead.';
-  if (/password should be at least/i.test(message)) return message;
-  if (/rate limit|too many/i.test(message)) return 'Too many attempts. Please wait a minute and try again.';
-  if (/signups not allowed|signup is disabled/i.test(message)) return 'New sign-ups are turned off. Ask an administrator to invite you.';
-  if (/failed to fetch|networkerror|load failed/i.test(message)) return 'Can\'t reach the sign-in service. Check your internet connection.';
-  return message;
-}
-
-async function run(fn) {
-  try {
-    const client = await getClient();
-    const { data, error } = await fn(client.auth);
-    if (error) throw error;
-    return data;
-  } catch (err) {
-    throw new Error(friendlyError(err));
-  }
-}
+let signingOut = false;
 
 // ---------------------------------------------------------------------
 // User helpers
 // ---------------------------------------------------------------------
 /** Display name: the name given at sign-up, else the part of the email before the @. */
 export function displayNameFor(user) {
-  const named = user?.user_metadata?.full_name?.trim();
+  const named = (user?.displayName ?? user?.user_metadata?.full_name ?? '').trim();
   return named || (user?.email ? user.email.split('@')[0] : 'User');
 }
+
+/** A small copy of the Supabase user — the rest of the app never sees the SDK object. */
+const toAppUser = (sbUser) => ({
+  id: sbUser.id,
+  email: sbUser.email ?? '',
+  displayName: sbUser.user_metadata?.full_name ?? '',
+  user_metadata: { full_name: sbUser.user_metadata?.full_name ?? '' },
+});
+
+const guestUser = () => ({ id: 'guest', email: '', displayName: GUEST_NAME, user_metadata: { full_name: GUEST_NAME }, isGuest: true });
 
 /** Sync accessor, valid after `requireSession()` has resolved. */
 export function getCurrentUser() {
@@ -86,20 +63,66 @@ export function safeNextPath(raw) {
   return raw;
 }
 
-// ---------------------------------------------------------------------
-// Session
-// ---------------------------------------------------------------------
-export async function getSession() {
-  if (!isSupabaseConfigured()) return null;
+/** Turns Supabase's error messages into something a shop owner can act on. */
+function friendlyError(error) {
+  const message = String(error?.message ?? error ?? 'Something went wrong.');
+  if (/invalid login credentials/i.test(message)) return 'That email and password don\'t match. Check them and try again.';
+  if (/email not confirmed/i.test(message)) return 'Please confirm your email first — check your inbox for the link we sent.';
+  if (/already registered|already been registered/i.test(message)) return 'An account with that email already exists. Try signing in instead.';
+  if (/password should be at least|weak password/i.test(message)) return 'Choose a stronger password (at least 8 characters).';
+  if (/rate limit|too many|security purposes/i.test(message)) return 'Too many attempts. Please wait a minute and try again.';
+  if (/signups not allowed|signup is disabled/i.test(message)) return 'New sign-ups are turned off. Ask the shop owner to invite you.';
+  if (/failed to fetch|networkerror|load failed/i.test(message)) return 'Can\'t reach the sign-in service. Check your internet connection.';
+  if (/same password|different from the old/i.test(message)) return 'Choose a password you haven\'t used before.';
+  return message;
+}
+
+async function run(fn) {
   try {
-    const client = await getClient();
-    const { data } = await client.auth.getSession();
-    currentUser = data.session?.user ?? null;
-    return data.session ?? null;
+    const client = await getSupabase();
+    const { data, error } = await fn(client);
+    if (error) throw error;
+    return data;
   } catch (err) {
-    console.error('[auth] Could not read session', err);
-    return null;
+    throw Object.assign(new Error(friendlyError(err)), { code: err?.code });
   }
+}
+
+// ---------------------------------------------------------------------
+// Access state — the single source of truth for "may this person use the app?"
+// ---------------------------------------------------------------------
+/**
+ * @returns {Promise<{ state: 'signed-out' | 'unverified' | 'not-approved' | 'ok', user?: object }>}
+ *   `ok` means signed in + email confirmed + approved by the owner.
+ */
+export async function getAccessState() {
+  if (!CLOUD_SYNC) return { state: 'ok', user: guestUser() };
+  if (!isSupabaseConfigured()) return { state: 'signed-out' };
+
+  const client = await getSupabase();
+  const { data: { session } } = await client.auth.getSession(); // also consumes a confirmation / recovery link in the URL
+  if (!session) return { state: 'signed-out' };
+
+  const user = toAppUser(session.user);
+  if (!session.user.email_confirmed_at) return { state: 'unverified', user };
+
+  // is_staff() is defined in supabase/schema.sql: true only for a confirmed email that's on the staff list.
+  const { data: approved, error } = await client.rpc('is_staff');
+  if (error) {
+    if (/is_staff/.test(error.message) || error.code === 'PGRST202') {
+      throw new Error('The database isn\'t set up yet. Run supabase/schema.sql in the Supabase SQL Editor.');
+    }
+    throw error;
+  }
+  return { state: approved === true ? 'ok' : 'not-approved', user };
+}
+
+/** Re-checks the account — used after the person confirms their email or the owner approves them. */
+export async function refreshAccess() {
+  return run(async (client) => {
+    await client.auth.refreshSession().catch(() => {});
+    return { data: await getAccessState(), error: null };
+  });
 }
 
 function redirectToLogin() {
@@ -107,40 +130,44 @@ function redirectToLogin() {
   window.location.replace(`${LOGIN_PATH}?next=${encodeURIComponent(here)}`);
 }
 
-/** Stand-in identity used while AUTH_REQUIRED is off, so the rest of the app can treat "who's using this" uniformly. */
-const guestUser = () => ({ id: 'guest', email: '', user_metadata: { full_name: GUEST_NAME }, isGuest: true });
-
 /**
- * The route guard. With sign-in switched off it resolves immediately with a
- * guest user and never touches Supabase. Otherwise it resolves with the
- * session when someone is signed in.
- * Otherwise it redirects to the login page and returns a promise that
- * never settles — so the page script that awaited it simply stops,
- * instead of rendering protected content for a moment before navigating.
+ * The route guard. Resolves with `{ user }` once the person may use the app.
+ * Otherwise it redirects to the login page (which explains what's missing) and
+ * returns a promise that never settles — so the page script that awaited it
+ * simply stops, instead of rendering protected content for a moment first.
  */
 export async function requireSession() {
-  if (!AUTH_REQUIRED) {
+  if (!CLOUD_SYNC) {
     currentUser = guestUser();
     return { user: currentUser };
   }
-  const session = await getSession();
-  if (session) {
+
+  let access;
+  try {
+    access = await getAccessState();
+  } catch (err) {
+    console.error('[auth] Could not check access', err);
+    // Offline isn't the same as signed out: don't bounce someone to the login page just because the signal dropped.
+    if (isConnectionError(err) || connectionProblemFor(err)) { showConnectionProblem(connectionProblemFor(err)); return new Promise(() => {}); }
+    access = { state: 'signed-out' };
+  }
+
+  if (access.state === 'ok') {
+    currentUser = access.user;
     watchForSignOut();
-    return session;
+    return { user: currentUser };
   }
   redirectToLogin();
   return new Promise(() => {});
 }
 
 let watching = false;
-let signingOut = false; // this tab initiated the sign-out and is already navigating to the login page
 async function watchForSignOut() {
   if (watching) return;
   watching = true;
-  const client = await getClient();
-  // Fires when the user signs out in another tab, or a refresh token is revoked/expired.
-  client.auth.onAuthStateChange((event, session) => {
-    currentUser = session?.user ?? null;
+  const client = await getSupabase();
+  // Fires when the person signs out in another tab, or their session is revoked/expires.
+  client.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_OUT' && !signingOut) redirectToLogin();
   });
 }
@@ -148,46 +175,55 @@ async function watchForSignOut() {
 // ---------------------------------------------------------------------
 // Actions used by the login page and sidebar
 // ---------------------------------------------------------------------
+/** Signs in and reports what the person can do next — see getAccessState(). */
 export async function signIn(email, password) {
-  const data = await run((auth) => auth.signInWithPassword({ email: email.trim(), password }));
-  currentUser = data.user;
-  return data.session;
+  try {
+    await run((client) => client.auth.signInWithPassword({ email: email.trim(), password }));
+  } catch (err) {
+    // Supabase refuses to sign in an unconfirmed address; route the person to the "confirm your email" screen instead.
+    if (err.code === 'email_not_confirmed') return { state: 'unverified', user: { email: email.trim() } };
+    throw err;
+  }
+  return getAccessState();
 }
 
-/** Resolves `{ needsConfirmation }` — Supabase returns no session until the email link is clicked, when confirmations are on. */
+/** Creates the login (saving the person's name) and emails a confirmation link. Returns the resulting access state — normally 'unverified'. */
 export async function signUp({ email, password, fullName }) {
-  const data = await run((auth) => auth.signUp({
+  const data = await run((client) => client.auth.signUp({
     email: email.trim(),
     password,
-    options: {
-      data: { full_name: fullName.trim() },
-      emailRedirectTo: `${window.location.origin}${LOGIN_PATH}`,
-    },
+    options: { data: { full_name: fullName.trim() }, emailRedirectTo: `${window.location.origin}${LOGIN_PATH}` },
   }));
-  // With email confirmation on, an already-registered address comes back as a user with no identities.
+  // With confirmation on, an already-registered address comes back as a user with no identities.
   if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-    throw new Error(friendlyError('User already registered'));
+    throw new Error('An account with that email already exists. Try signing in instead.');
   }
-  if (data.session) currentUser = data.user;
-  return { needsConfirmation: !data.session };
+  if (data.session) return getAccessState(); // this project doesn't require confirmation
+  return { state: 'unverified', user: { email: email.trim() } };
+}
+
+export async function resendVerification(email) {
+  await run((client) => client.auth.resend({ type: 'signup', email: email.trim(), options: { emailRedirectTo: `${window.location.origin}${LOGIN_PATH}` } }));
 }
 
 export async function sendPasswordReset(email) {
-  await run((auth) => auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}${LOGIN_PATH}` }));
+  await run((client) => client.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}${LOGIN_PATH}` }));
 }
 
+/** Sets a new password for the person who just arrived from a reset link (they hold a recovery session). */
 export async function updatePassword(newPassword) {
-  await run((auth) => auth.updateUser({ password: newPassword }));
+  await run((client) => client.auth.updateUser({ password: newPassword }));
 }
 
 export async function signOut() {
   signingOut = true;
+  currentUser = null;
   try {
-    const client = await getClient();
+    const client = await getSupabase();
     await client.auth.signOut();
+    await clearCloudImageCache(); // photos downloaded from the shared bucket shouldn't linger on a shared computer
   } catch (err) {
     console.error('[auth] Sign-out request failed; clearing local session anyway', err);
   }
-  currentUser = null;
   window.location.replace(LOGIN_PATH);
 }

@@ -7,7 +7,8 @@
  * all end up calling `adjustStock()` below, which:
  *
  *   1. Reads the CURRENT quantity from api.products (the one shared table)
- *   2. Writes the NEW quantity back to that same record
+ *   2. Writes the NEW quantity back to that same record — in ONE atomic step, so two
+ *      people changing the same product at the same moment can't overwrite each other
  *   3. Appends an immutable entry to the inventory log (audit trail)
  *   4. Recomputes stock status (in_stock / low_stock / out_of_stock)
  *   5. Emits a notification when a threshold is crossed
@@ -42,28 +43,45 @@ export function computeStockStatus(product) {
  * @returns {Promise<{product: object, logEntry: object}>}
  */
 export async function adjustStock({ productId, delta, type, channel, reference = null, note = '', actor = 'system' }) {
-  const product = await api.products.get(productId);
-  if (!product) throw new Error(`Product ${productId} not found`);
+  return changeStock(productId, (product, previousQuantity) => {
+    // A sale that would take stock below zero must fail — with many people selling at once, this check is
+    // what stops two of them both getting the last unit. (Other movements clamp at zero as before.)
+    if (type === STOCK_MOVEMENT_TYPES.SALE && previousQuantity + delta < 0) {
+      throw new Error(`Only ${previousQuantity} of ${product.name} left in stock.`);
+    }
+    return { newQuantity: Math.max(0, previousQuantity + delta), delta, note };
+  }, { type, channel, reference, actor });
+}
 
-  const previousQuantity = product.stockQuantity ?? 0;
-  const newQuantity = Math.max(0, previousQuantity + delta);
+/**
+ * The one place stock is actually written. `resolve(product, previousQuantity)` decides the new quantity
+ * from the CURRENT stored value and runs inside an atomic read-modify-write (api.products.mutate), so
+ * simultaneous changes from different screens or people can never overwrite each other.
+ */
+async function changeStock(productId, resolve, { type, channel, reference, actor }) {
+  let previousQuantity = 0;
+  let outcome = { delta: 0, note: '' };
 
-  const updated = await api.products.update(productId, {
-    stockQuantity: newQuantity,
-    stockStatus: computeStockStatus({ ...product, stockQuantity: newQuantity }),
+  const updated = await api.products.mutate(productId, (product) => {
+    previousQuantity = product.stockQuantity ?? 0;
+    outcome = resolve(product, previousQuantity);
+    return {
+      stockQuantity: outcome.newQuantity,
+      stockStatus: computeStockStatus({ ...product, stockQuantity: outcome.newQuantity }),
+    };
   });
 
   const logEntry = await api.inventoryLog.create({
     productId,
-    productName: product.name,
-    sku: product.sku,
+    productName: updated.name,
+    sku: updated.sku,
     type,
     channel,
-    delta,
+    delta: outcome.delta,
     previousQuantity,
-    newQuantity,
+    newQuantity: updated.stockQuantity,
     reference,
-    note,
+    note: outcome.note ?? '',
     actor,
   });
 
@@ -83,6 +101,16 @@ export async function deductForSale({ productId, quantity, channel, orderId, act
     reference: orderId,
     actor,
   });
+}
+
+/** Undoes stock already taken for an order that then failed. Best-effort: each line is attempted independently. */
+export async function putStockBack(lines, channel, orderId, actor) {
+  for (const item of lines) {
+    await adjustStock({
+      productId: item.productId, delta: Math.abs(item.quantity), type: STOCK_MOVEMENT_TYPES.ADJUSTMENT, channel,
+      reference: orderId, note: 'Order failed — stock put back', actor,
+    }).catch((err) => console.error('[stock] Could not put stock back for', item.productId, err));
+  }
 }
 
 /** Convenience wrapper for restocking from a supplier purchase order. */
@@ -111,17 +139,11 @@ export async function restockFromReturn({ productId, quantity, returnId, channel
 
 /** Manual stock-take correction (can be positive or negative). */
 export async function applyStockCount({ productId, countedQuantity, actor }) {
-  const product = await api.products.get(productId);
-  if (!product) throw new Error(`Product ${productId} not found`);
-  const delta = countedQuantity - (product.stockQuantity ?? 0);
-  return adjustStock({
-    productId,
-    delta,
-    type: STOCK_MOVEMENT_TYPES.STOCK_COUNT,
-    channel: CHANNELS.PHYSICAL,
-    note: `Stock count correction: ${product.stockQuantity} -> ${countedQuantity}`,
-    actor,
-  });
+  return changeStock(productId, (product, previousQuantity) => ({
+    newQuantity: countedQuantity,
+    delta: countedQuantity - previousQuantity,
+    note: `Stock count correction: ${previousQuantity} -> ${countedQuantity}`,
+  }), { type: STOCK_MOVEMENT_TYPES.STOCK_COUNT, channel: CHANNELS.PHYSICAL, reference: null, actor });
 }
 
 /**

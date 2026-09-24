@@ -6,6 +6,7 @@
  * canvas that already has a chart attached to it) — `charts` below
  * tracks the live instance per canvas id.
  */
+import { watchData } from '../services/live-data.js';
 import {
   getSalesReport, getInventoryReport, getProfitReport, getCustomerReport,
   getEmployeeReport, getPurchaseReport, getSupplierReport,
@@ -24,6 +25,8 @@ function renderChart(canvasId, config) {
   charts[canvasId] = new Chart(document.getElementById(canvasId), config);
 }
 
+let activeTab = 'sales';
+
 const renderers = {
   sales: renderSalesTab,
   inventory: renderInventoryTab,
@@ -36,7 +39,9 @@ const renderers = {
 
 export async function initReportsPage() {
   applyChartDefaults(Chart);
-  initTabs(document.getElementById('reports-tabs'), { onChange: (key) => renderers[key]?.() });
+  initTabs(document.getElementById('reports-tabs'), { onChange: (key) => { activeTab = key; return renderers[key]?.(); } });
+  // Live: redraw the tab being looked at when the numbers behind it change (slower debounce — charts are heavier).
+  watchData(['products', 'sales', 'onlineOrders', 'customers', 'employees', 'purchaseOrders', 'suppliers'], () => renderers[activeTab]?.(), { debounceMs: 1000 });
   await renderSalesTab();
 }
 

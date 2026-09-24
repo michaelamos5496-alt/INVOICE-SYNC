@@ -12,6 +12,8 @@ import { initTabs } from '../components/tabs.js';
 import { toast } from '../components/toast.js';
 import { modal } from '../components/modal.js';
 import { STORAGE_KEYS } from '../config/constants.js';
+import { CLOUD_SYNC } from '../config/supabase.config.js';
+import { readLocalSummary, uploadLocalDataToCloud } from '../services/migrate.service.js';
 import { escapeHTML } from '../utils/helpers.js';
 
 const TIMEZONES = ['Africa/Accra', 'Africa/Lagos', 'UTC', 'America/New_York', 'Europe/London'];
@@ -32,13 +34,24 @@ export async function initSettingsPage() {
   renderDataForm();
 }
 
+/** Saves settings and reports the outcome — in sync mode a save can be refused (e.g. only the owner may change settings). */
+async function saveSettings(patch, successMessage) {
+  try {
+    await updateSettings(patch);
+    toast.success(successMessage);
+  } catch (err) {
+    toast.danger(err.message);
+  }
+}
+
 function renderStoreProfileForm() {
   const s = getSettings();
   document.getElementById('store-profile-form').innerHTML = `
     <div class="grid sm:grid-cols-2 gap-4">
       <div class="sm:col-span-2">
-        <label class="field-label">Store Name</label>
-        <input id="f-store-name" class="input" value="${escapeHTML(s.storeName)}" />
+        <label class="field-label" for="f-store-name">Store Name</label>
+        <input id="f-store-name" class="input" maxlength="60" value="${escapeHTML(s.storeName)}" placeholder="Your business name" aria-describedby="store-name-hint" />
+        <p id="store-name-hint" class="field-hint">Your business name. It appears in the sidebar and browser tab, and on POS receipts and invoices, along with the contact details below.</p>
       </div>
       <div>
         <label class="field-label">Store Email</label>
@@ -62,16 +75,13 @@ function renderStoreProfileForm() {
     <button id="save-store-profile" class="btn btn-primary mt-4"><i class="fa-solid fa-check"></i> Save Store Profile</button>
   `;
 
-  document.getElementById('save-store-profile').addEventListener('click', () => {
-    updateSettings({
-      storeName: document.getElementById('f-store-name').value.trim(),
-      storeEmail: document.getElementById('f-store-email').value.trim(),
-      storePhone: document.getElementById('f-store-phone').value.trim(),
-      storeAddress: document.getElementById('f-store-address').value.trim(),
-      timezone: document.getElementById('f-timezone').value,
-    });
-    toast.success('Store profile saved.');
-  });
+  document.getElementById('save-store-profile').addEventListener('click', () => saveSettings({
+    storeName: document.getElementById('f-store-name').value.replace(/\s+/g, ' ').trim(),
+    storeEmail: document.getElementById('f-store-email').value.trim(),
+    storePhone: document.getElementById('f-store-phone').value.trim(),
+    storeAddress: document.getElementById('f-store-address').value.trim(),
+    timezone: document.getElementById('f-timezone').value,
+  }, 'Store profile saved.'));
 }
 
 function renderTaxCurrencyForm() {
@@ -103,8 +113,10 @@ function renderTaxCurrencyForm() {
   document.getElementById('save-tax-currency').addEventListener('click', () => {
     const currency = document.getElementById('f-currency').value;
     const changed = currency !== getCurrency();
-    updateSettings({ currency, taxRate: Number(document.getElementById('f-tax-rate').value) || 0 });
-    toast.success(changed ? `Currency changed to ${currency}. Prices and totals across the app now use it.` : 'Tax & currency settings saved.');
+    return saveSettings(
+      { currency, taxRate: Number(document.getElementById('f-tax-rate').value) || 0 },
+      changed ? `Currency changed to ${currency}. Prices and totals across the app now use it.` : 'Tax & currency settings saved.',
+    );
   });
 }
 
@@ -162,16 +174,76 @@ function renderPreferencesForm() {
     localStorage.setItem(STORAGE_KEYS.THEME, e.target.checked ? 'dark' : 'light');
   });
 
-  document.getElementById('save-preferences').addEventListener('click', () => {
-    updateSettings({
-      lowStockAlerts: document.getElementById('f-low-stock-alerts').checked,
-      emailNotifications: document.getElementById('f-email-notifications').checked,
+  document.getElementById('save-preferences').addEventListener('click', () => saveSettings({
+    lowStockAlerts: document.getElementById('f-low-stock-alerts').checked,
+    emailNotifications: document.getElementById('f-email-notifications').checked,
+  }, 'Preferences saved.'));
+}
+
+const LOCAL_LABELS = {
+  products: 'products', categories: 'categories', brands: 'brands', suppliers: 'suppliers', warehouses: 'warehouses',
+  customers: 'customers', employees: 'employees', sales: 'sales', onlineOrders: 'online orders', returns: 'returns',
+  purchaseOrders: 'purchase orders', stockTransfers: 'stock transfers', invoices: 'invoices',
+  inventoryLog: 'stock movements', activityLog: 'activity entries', notifications: 'notifications',
+};
+
+/** Data tab while cloud sync is on: upload what this browser already holds; wiping shared data is deliberately not offered here. */
+function renderCloudDataForm() {
+  const local = readLocalSummary();
+  const parts = Object.entries(local.counts).map(([name, n]) => `${n} ${LOCAL_LABELS[name] ?? name}`);
+  if (local.photos) parts.push(`${local.photos} photo${local.photos === 1 ? '' : 's'}`);
+  document.getElementById('data-form').innerHTML = `
+    <div class="space-y-4">
+      <div class="card p-4 space-y-3">
+        <div>
+          <p class="text-sm font-medium">Upload this browser's data to the shared database</p>
+          <p class="text-xs text-[var(--text-muted)] mt-1">${local.total
+            ? `This browser still holds ${escapeHTML(parts.join(', '))} from before sharing was turned on. Copy them up so everyone sees them. Anything that already exists in the shared database is left untouched, and this browser's own copy is kept as a backup.`
+            : 'Nothing from before sharing was turned on is stored in this browser, so there is nothing to upload.'}</p>
+          ${local.lastRunAt ? `<p class="text-xs text-[var(--text-muted)] mt-1">Last uploaded ${escapeHTML(new Date(local.lastRunAt).toLocaleString())}.</p>` : ''}
+        </div>
+        <button id="upload-local-data" class="btn btn-primary btn-sm" ${local.total ? '' : 'disabled'}><i class="fa-solid fa-cloud-arrow-up"></i> Upload to shared database</button>
+      </div>
+      <div class="card p-4">
+        <p class="text-sm font-medium">Clear All Data and Sample Data are switched off</p>
+        <p class="text-xs text-[var(--text-muted)] mt-1">Your data is shared with everyone on the team, so wiping it — or loading example data into it — from one screen could hurt every other person's work. To start over, use your Supabase dashboard (Table Editor).</p>
+      </div>
+    </div>`;
+
+  document.getElementById('upload-local-data').addEventListener('click', async () => {
+    const ok = await modal.confirm({
+      title: 'Upload this browser\'s data?',
+      message: `This copies ${escapeHTML(parts.join(', '))} into the shared database. Existing shared records are never overwritten, so it's safe to run more than once.`,
+      confirmLabel: 'Upload',
+      danger: false,
     });
-    toast.success('Preferences saved.');
+    if (!ok) return;
+
+    const el = modal.open({
+      title: 'Uploading…', size: 'sm',
+      bodyHTML: `<div class="space-y-3" role="status" aria-live="polite">
+        <p id="upload-label" class="text-sm text-[var(--text-secondary)]">Starting…</p>
+        <div class="h-2 rounded-full overflow-hidden" style="background: var(--surface-sunken)"><div id="upload-bar" class="h-full" style="width:0; background: var(--color-primary-600); transition: width 200ms"></div></div>
+      </div>`,
+    });
+    try {
+      const result = await uploadLocalDataToCloud(({ label, done, total }) => {
+        el.querySelector('#upload-label').textContent = `${label}… ${done} of ${total}`;
+        el.querySelector('#upload-bar').style.width = `${Math.round((done / Math.max(1, total)) * 100)}%`;
+      });
+      modal.close();
+      const added = Object.values(result.added).reduce((a, b) => a + b, 0);
+      toast.success(`Uploaded ${added} record${added === 1 ? '' : 's'}${result.photos ? ` and ${result.photos} photo${result.photos === 1 ? '' : 's'}` : ''}${result.skipped ? ` (${result.skipped} already there, left as they were)` : ''}.`, { duration: 7000 });
+      renderCloudDataForm();
+    } catch (err) {
+      modal.close();
+      toast.danger(err.message, { duration: 9000 });
+    }
   });
 }
 
 function renderDataForm() {
+  if (CLOUD_SYNC) { renderCloudDataForm(); return; }
   const populated = hasAnyData();
   document.getElementById('data-form').innerHTML = `
     <div class="space-y-4">

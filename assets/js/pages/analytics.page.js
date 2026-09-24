@@ -5,6 +5,7 @@
  * analytics.service.js, which composes the same order/product
  * collections every other report reads.
  */
+import { watchData } from '../services/live-data.js';
 import {
   getProductPerformance, getFastMovers, getDeadStock,
 } from '../services/analytics.service.js';
@@ -22,6 +23,8 @@ function renderChart(canvasId, config) {
   charts[canvasId] = new Chart(document.getElementById(canvasId), config);
 }
 
+let activeTab = 'performance';
+
 const renderers = {
   performance: renderPerformanceTab,
   'fast-movers': renderFastMoversTab,
@@ -30,7 +33,9 @@ const renderers = {
 
 export async function initAnalyticsPage() {
   applyChartDefaults(Chart);
-  initTabs(document.getElementById('analytics-tabs'), { onChange: (key) => renderers[key]?.() });
+  initTabs(document.getElementById('analytics-tabs'), { onChange: (key) => { activeTab = key; return renderers[key]?.(); } });
+  // Live: redraw the tab being looked at when the numbers behind it change (slower debounce — charts are heavier).
+  watchData(['products', 'sales', 'onlineOrders', 'inventoryLog'], () => renderers[activeTab]?.(), { debounceMs: 1000 });
   await renderPerformanceTab();
 }
 

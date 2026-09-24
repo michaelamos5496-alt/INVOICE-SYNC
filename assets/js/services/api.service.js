@@ -3,11 +3,11 @@
  *
  * Data-access facade. Every page/component imports from HERE, never from
  * storage.service.js directly. That indirection is the whole point: today
- * `DATA_ADAPTER` is 'local' and every call resolves against localStorage;
- * flipping it to 'rest' in constants.js (Phase 10) repoints every one of
- * these methods at `fetch(`${API_BASE_URL}/...`)` against the Node/Express
- * + Postgres/MySQL backend, or a Supabase client, with zero changes needed
- * in page code.
+ * `DATA_ADAPTER` is 'local' and every call resolves against localStorage.
+ * With CLOUD_SYNC on (supabase.config.js) the very same methods talk to a
+ * shared Supabase database instead — see cloud-data.service.js — with zero
+ * changes needed in page code. (A custom REST backend is still supported via
+ * DATA_ADAPTER = 'rest'.)
  *
  * All methods are async and return Promises even in the 'local' adapter,
  * so calling code is already written the way it needs to be for a real
@@ -15,15 +15,14 @@
  */
 import { storage } from './storage.service.js';
 import { STORAGE_KEYS, DATA_ADAPTER, API_BASE_URL } from '../config/constants.js';
+import { CLOUD_SYNC } from '../config/supabase.config.js';
+import { createCloudCollection } from './cloud-data.service.js';
+import { generateId } from '../utils/ids.js';
 
 const SIMULATED_LATENCY_MS = 120;
 
 function delay(ms = SIMULATED_LATENCY_MS) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function generateId(prefix = 'id') {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**
@@ -82,6 +81,17 @@ function createCollection(storageKey, idPrefix) {
       return true;
     },
 
+    /** Read-modify-write in one step: `fn(current)` returns the fields to change, or throws to abort. */
+    async mutate(id, fn) {
+      await delay();
+      const all = storage.get(storageKey, []);
+      const idx = all.findIndex((r) => r.id === id);
+      if (idx === -1) throw new Error(`Record ${id} not found in ${storageKey}`);
+      all[idx] = { ...all[idx], ...fn(all[idx]), id, updatedAt: new Date().toISOString() };
+      persist(all);
+      return all[idx];
+    },
+
     /** Live subscription — fires with the fresh list whenever it changes. */
     subscribe(handler) {
       return storage.on(storageKey, (value) => handler(value ?? []));
@@ -127,6 +137,10 @@ function createRestCollection(resourcePath) {
       await fetch(`${url}/${id}`, { method: 'DELETE', credentials: 'include' });
       return true;
     },
+    async mutate(id, fn) { // not atomic over plain REST — the real backend should expose a dedicated endpoint
+      const patch = fn(await this.get(id));
+      return this.update(id, patch);
+    },
     subscribe() {
       // Phase 10: replace with a WebSocket/SSE subscription to the backend
       // so multi-device/multi-terminal stock changes push in real time.
@@ -135,25 +149,37 @@ function createRestCollection(resourcePath) {
   };
 }
 
-const factory = DATA_ADAPTER === 'rest' ? createRestCollection : createCollection;
-
-export const api = {
-  products:        DATA_ADAPTER === 'rest' ? factory('products')        : factory(STORAGE_KEYS.PRODUCTS, 'prod'),
-  categories:      DATA_ADAPTER === 'rest' ? factory('categories')      : factory(STORAGE_KEYS.CATEGORIES, 'cat'),
-  brands:          DATA_ADAPTER === 'rest' ? factory('brands')          : factory(STORAGE_KEYS.BRANDS, 'brand'),
-  suppliers:       DATA_ADAPTER === 'rest' ? factory('suppliers')       : factory(STORAGE_KEYS.SUPPLIERS, 'sup'),
-  customers:       DATA_ADAPTER === 'rest' ? factory('customers')       : factory(STORAGE_KEYS.CUSTOMERS, 'cust'),
-  employees:       DATA_ADAPTER === 'rest' ? factory('employees')       : factory(STORAGE_KEYS.EMPLOYEES, 'emp'),
-  sales:           DATA_ADAPTER === 'rest' ? factory('sales')           : factory(STORAGE_KEYS.SALES, 'sale'),
-  onlineOrders:    DATA_ADAPTER === 'rest' ? factory('online-orders')   : factory(STORAGE_KEYS.ONLINE_ORDERS, 'onl'),
-  purchaseOrders:  DATA_ADAPTER === 'rest' ? factory('purchase-orders') : factory(STORAGE_KEYS.PURCHASE_ORDERS, 'po'),
-  stockTransfers:  DATA_ADAPTER === 'rest' ? factory('stock-transfers') : factory(STORAGE_KEYS.STOCK_TRANSFERS, 'trf'),
-  returns:         DATA_ADAPTER === 'rest' ? factory('returns')         : factory(STORAGE_KEYS.RETURNS, 'ret'),
-  invoices:        DATA_ADAPTER === 'rest' ? factory('invoices')        : factory(STORAGE_KEYS.INVOICES, 'invc'),
-  inventoryLog:    DATA_ADAPTER === 'rest' ? factory('inventory-log')   : factory(STORAGE_KEYS.INVENTORY_LOG, 'invlog'),
-  activityLog:     DATA_ADAPTER === 'rest' ? factory('activity-log')   : factory(STORAGE_KEYS.ACTIVITY_LOG, 'act'),
-  notifications:   DATA_ADAPTER === 'rest' ? factory('notifications')  : factory(STORAGE_KEYS.NOTIFICATIONS, 'note'),
-  warehouses:      DATA_ADAPTER === 'rest' ? factory('warehouses')     : factory(STORAGE_KEYS.WAREHOUSES, 'wh'),
+/**
+ * name → [collection path, local storage key, id prefix, cloud options].
+ * The path doubles as the database table name (hyphens become underscores) and must match supabase/schema.sql.
+ * `windowDays` limits busy history collections to recent records when synced,
+ * so the amount downloaded doesn't grow forever (see cloud-data.service.js).
+ */
+export const RESOURCES = {
+  products:       ['products',        STORAGE_KEYS.PRODUCTS,        'prod'],
+  categories:     ['categories',      STORAGE_KEYS.CATEGORIES,      'cat'],
+  brands:         ['brands',          STORAGE_KEYS.BRANDS,          'brand'],
+  suppliers:      ['suppliers',       STORAGE_KEYS.SUPPLIERS,       'sup'],
+  customers:      ['customers',       STORAGE_KEYS.CUSTOMERS,       'cust'],
+  employees:      ['employees',       STORAGE_KEYS.EMPLOYEES,       'emp'],
+  sales:          ['sales',           STORAGE_KEYS.SALES,           'sale', { windowDays: 45 }],
+  onlineOrders:   ['online-orders',   STORAGE_KEYS.ONLINE_ORDERS,   'onl',  { windowDays: 45 }],
+  purchaseOrders: ['purchase-orders', STORAGE_KEYS.PURCHASE_ORDERS, 'po'],
+  stockTransfers: ['stock-transfers', STORAGE_KEYS.STOCK_TRANSFERS, 'trf'],
+  returns:        ['returns',         STORAGE_KEYS.RETURNS,         'ret'],
+  invoices:       ['invoices',        STORAGE_KEYS.INVOICES,        'invc'],
+  inventoryLog:   ['inventory-log',   STORAGE_KEYS.INVENTORY_LOG,   'invlog', { windowDays: 30 }],
+  activityLog:    ['activity-log',    STORAGE_KEYS.ACTIVITY_LOG,    'act',    { windowDays: 30 }],
+  notifications:  ['notifications',   STORAGE_KEYS.NOTIFICATIONS,   'note',   { windowDays: 30 }],
+  warehouses:     ['warehouses',      STORAGE_KEYS.WAREHOUSES,      'wh'],
 };
+
+/** CLOUD_SYNC on → shared Supabase data; otherwise DATA_ADAPTER ('local' browser storage, or the future 'rest' backend). */
+function build([path, storageKey, prefix, cloudOptions]) {
+  if (CLOUD_SYNC) return createCloudCollection(path, prefix, cloudOptions);
+  return DATA_ADAPTER === 'rest' ? createRestCollection(path) : createCollection(storageKey, prefix);
+}
+
+export const api = Object.fromEntries(Object.entries(RESOURCES).map(([name, def]) => [name, build(def)]));
 
 export { generateId };

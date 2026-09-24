@@ -3,6 +3,7 @@
  * physical-shop sales (POS checkouts write here — see pos.service.js).
  * Viewing a row shows the same itemized layout as the POS receipt.
  */
+import { watchData } from '../services/live-data.js';
 import { api } from '../services/api.service.js';
 import { DataTable } from '../components/table.js';
 import { modal } from '../components/modal.js';
@@ -28,25 +29,29 @@ export async function initSalesPage() {
       },
     ],
     pageSize: 10,
+    onRender: () => wireViewButtons(sales), // re-attach the view buttons every time the rows are redrawn
     searchKeys: [],
     rowKey: (row) => row.id,
     defaultSort: { key: 'createdAt', dir: 'desc' },
     emptyState: { icon: 'fa-receipt', title: 'No sales yet', message: 'Sales made through the POS will show up here.' },
   });
 
-  table.setLoading();
-  const sales = await api.sales.list();
-  table.setData(sales);
-
-  document.getElementById('sales-search').addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
+  let sales = [];
+  const apply = () => {
+    const term = document.getElementById('sales-search').value.toLowerCase();
     table.setData(term
       ? sales.filter((s) => s.id.toLowerCase().includes(term) || customerName(s.customerId).toLowerCase().includes(term))
       : sales);
-    wireViewButtons(sales);
-  });
+  };
+  const load = async () => {
+    table.setLoading();
+    [sales, customers] = await Promise.all([api.sales.list(), api.customers.list()]);
+    apply();
+  };
+  await load();
+  watchData(['sales', 'customers'], load); // live: sales rung up on other tills appear here
 
-  wireViewButtons(sales);
+  document.getElementById('sales-search').addEventListener('input', apply);
 }
 
 function customerName(id) {

@@ -7,6 +7,7 @@
  * the online channel draws from the identical pool the POS just sold
  * from in Phase 6.
  */
+import { watchData } from '../services/live-data.js';
 import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import {
@@ -30,11 +31,13 @@ let lookups = { customers: [], products: [] };
 let lineItems = [];
 
 export async function initOnlineOrdersPage() {
-  const [customers, products] = await Promise.all([api.customers.list(), api.products.list()]);
-  lookups = { customers, products };
+  await reloadLookups();
 
   buildTable();
   await refreshTable();
+
+  watchData(['onlineOrders'], refreshTable);
+  watchData(['customers', 'products'], async () => { await reloadLookups(); await refreshTable(); });
 
   document.getElementById('new-order-btn').addEventListener('click', () => openCreateModal());
   document.getElementById('simulate-order-btn').addEventListener('click', async () => {
@@ -67,6 +70,7 @@ function buildTable() {
       },
     ],
     pageSize: 10,
+    onRender: wireRowActions, // row menus must be re-attached every time the rows are redrawn (paging, sorting, live updates)
     searchKeys: [],
     rowKey: (row) => row.id,
     defaultSort: { key: 'createdAt', dir: 'desc' },
@@ -78,10 +82,14 @@ function buildTable() {
   });
 }
 
+async function reloadLookups() {
+  const [customers, products] = await Promise.all([api.customers.list(), api.products.list()]);
+  lookups = { customers, products };
+}
+
 async function refreshTable() {
   table.setLoading();
   table.setData(await listOnlineOrders());
-  wireRowActions();
 }
 
 function wireRowActions() {

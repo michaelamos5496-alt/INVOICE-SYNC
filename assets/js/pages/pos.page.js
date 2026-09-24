@@ -6,10 +6,11 @@
  * checkout(), which is the only thing allowed to deduct stock here.
  */
 import { getActorName } from '../services/auth.service.js';
+import { watchData } from '../services/live-data.js';
 import { imageTagHTML, hydrateImages } from '../services/image-store.service.js';
 import { api } from '../services/api.service.js';
 import { checkout, computeCartTotals } from '../services/pos.service.js';
-import { getSettings } from '../services/settings.service.js';
+import { getSettings, getBrandName } from '../services/settings.service.js';
 import { PAYMENT_METHODS } from '../config/constants.js';
 import { modal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
@@ -45,6 +46,27 @@ export async function initPOSPage() {
     if (match) { addToCart(match); toast.success(`Added: ${match.name}`); }
     else toast.danger(`No product matches "${code}".`);
     e.target.value = '';
+  });
+
+  // Live: other tills sell from the same stock. Keep the grid and this cart honest as it changes.
+  watchData(['products'], async () => {
+    products = await api.products.list();
+    const trimmed = [];
+    for (const item of cart) {
+      item.maxQuantity = products.find((p) => p.id === item.productId)?.stockQuantity ?? 0;
+      if (item.quantity > item.maxQuantity) { trimmed.push(item.name); item.quantity = item.maxQuantity; }
+    }
+    cart = cart.filter((item) => item.quantity > 0);
+    if (trimmed.length) toast.warning(`Stock changed while you were selling — cart adjusted for: ${trimmed.join(', ')}.`);
+    renderProductGrid();
+    renderCart();
+  });
+  watchData(['customers'], async () => {
+    customers = await api.customers.list();
+    const select = document.getElementById('pos-customer');
+    const selected = select.value;
+    populateCustomerSelect();
+    select.value = selected;
   });
 
   document.getElementById('pos-discount').addEventListener('input', renderCart);
@@ -318,7 +340,9 @@ function openReceiptModal(sale) {
     bodyHTML: `
       <div id="receipt-print-area" class="space-y-3 font-mono text-sm">
         <div class="text-center">
-          <p class="font-display font-bold text-base">InvSync</p>
+          <p class="font-display font-bold text-base">${escapeHTML(getBrandName())}</p>
+          ${getSettings().storeAddress ? `<p class="text-xs text-[var(--text-muted)]">${escapeHTML(getSettings().storeAddress)}</p>` : ''}
+          ${getSettings().storePhone ? `<p class="text-xs text-[var(--text-muted)]">${escapeHTML(getSettings().storePhone)}</p>` : ''}
           <p class="text-xs text-[var(--text-muted)]">${formatDateTime(sale.createdAt)}</p>
           <p class="text-xs text-[var(--text-muted)]">Order #${sale.id.slice(-6).toUpperCase()} · ${escapeHTML(customer?.name ?? 'Walk-in customer')}</p>
         </div>

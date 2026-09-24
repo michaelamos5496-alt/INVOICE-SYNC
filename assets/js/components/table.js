@@ -22,6 +22,8 @@
  */
 import { renderEmptyState } from './empty-state.js';
 import { renderSkeletonRows } from './skeleton.js';
+import { isLiveRefresh } from '../utils/live-flag.js';
+import { escapeHTML } from '../utils/helpers.js';
 
 function cellRole(col, index) {
   if (!col.label) return ' data-cell="actions"';
@@ -57,13 +59,14 @@ export class DataTable {
   }
 
   setLoading(rows = this.pageSize) {
+    if (isLiveRefresh()) return; // a change made elsewhere shouldn't flash the table into a loading state
     renderSkeletonRows(this.tbody, { rows, columns: this.options.columns.length });
     this.footer.innerHTML = '';
   }
 
   setData(data) {
     this.data = data;
-    this.page = 1;
+    if (!isLiveRefresh()) this.page = 1; // …and shouldn't throw someone browsing page 3 back to page 1
     this._applyFilterAndSort();
   }
 
@@ -134,7 +137,7 @@ export class DataTable {
     this.tbody.innerHTML = pageRows.map((row) => `
       <tr data-row-key="${this.options.rowKey ? this.options.rowKey(row) : ''}">
         ${this.options.columns.map((col, i) => `
-          <td class="${col.align === 'right' ? 'text-right' : ''}" data-label="${col.label}"${cellRole(col, i)}>${col.render ? col.render(row) : row[col.key] ?? ''}</td>
+          <td class="${col.align === 'right' ? 'text-right' : ''}" data-label="${col.label}"${cellRole(col, i)}>${col.render ? col.render(row) : escapeHTML(row[col.key])}</td>
         `).join('')}
       </tr>
     `).join('');

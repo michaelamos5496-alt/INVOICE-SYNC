@@ -13,6 +13,7 @@
  *     fields: [{ key: 'name', label: 'Name', type: 'text', required: true }, ...],
  *   }).init();
  */
+import { watchData } from '../services/live-data.js';
 import { DataTable } from '../components/table.js';
 import { modal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
@@ -62,7 +63,6 @@ export function createSimpleCatalogPage({
     table.setLoading();
     const items = await collection.list();
     table.setData(items);
-    wireRowActions();
   }
 
   function wireRowActions() {
@@ -130,6 +130,7 @@ export function createSimpleCatalogPage({
       table = new DataTable(document.querySelector(tableSelector), {
         columns: buildColumns(),
         pageSize: 8,
+        onRender: wireRowActions, // re-attach row menus every time the rows are redrawn
         searchKeys: fields.filter((f) => f.type !== 'textarea').map((f) => f.key),
         rowKey: (row) => row.id,
         defaultSort: { key: fields[0].key, dir: 'asc' },
@@ -145,6 +146,7 @@ export function createSimpleCatalogPage({
       if (searchEl) searchEl.addEventListener('input', debounce((e) => table.setSearchTerm(e.target.value), 200));
 
       await refresh();
+      watchData([collection], refresh); // live: another device adds/renames/removes one
     },
   };
 }

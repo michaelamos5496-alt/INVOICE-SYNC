@@ -5,6 +5,7 @@
  * quantity change but updates the product's location and logs both
  * legs of the move for the audit trail.
  */
+import { watchData } from '../services/live-data.js';
 import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import { createStockTransfer } from '../services/inventory.service.js';
@@ -18,11 +19,13 @@ let table;
 let lookups = { products: [], warehouses: [] };
 
 export async function initStockTransfersPage() {
-  const [products, warehouses] = await Promise.all([api.products.list(), api.warehouses.list()]);
-  lookups = { products, warehouses };
+  await reloadLookups();
 
   buildTable();
   await refreshTable();
+
+  watchData(['stockTransfers'], refreshTable);
+  watchData(['products', 'warehouses'], async () => { await reloadLookups(); await refreshTable(); });
 
   document.getElementById('create-transfer-btn').addEventListener('click', () => openCreateModal());
 }
@@ -51,6 +54,11 @@ function buildTable() {
       actionLabel: 'New Transfer', onAction: () => openCreateModal(),
     },
   });
+}
+
+async function reloadLookups() {
+  const [products, warehouses] = await Promise.all([api.products.list(), api.warehouses.list()]);
+  lookups = { products, warehouses };
 }
 
 async function refreshTable() {

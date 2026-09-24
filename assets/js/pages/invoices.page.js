@@ -10,12 +10,13 @@
  * detail modals), and `?view=<id>` opens an existing invoice.
  */
 import { getActorName } from '../services/auth.service.js';
+import { watchData } from '../services/live-data.js';
 import { api } from '../services/api.service.js';
 import {
   INVOICE_STATUS, DEFAULT_DUE_DAYS, listInvoices, computeInvoiceTotals, effectiveStatus,
   createInvoice, updateInvoice, markInvoiceSent, markInvoicePaid, voidInvoice, deleteDraftInvoice, draftFromOrder,
 } from '../services/invoices.service.js';
-import { getSettings, getCurrency } from '../services/settings.service.js';
+import { getSettings, getCurrency, getBrandName, hasStoreName } from '../services/settings.service.js';
 import { DataTable } from '../components/table.js';
 import { modal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
@@ -44,15 +45,29 @@ let lineItems = [];
 /** Invoices created before currency was recorded (no `currency` field) are shown in the shop's current currency. */
 const money = (amount, currency = getCurrency()) => formatCurrency(amount, currency);
 
+/** Shown above an invoice while Settings has no business name — otherwise the customer would see the app's name as the issuer. */
+const missingNameNotice = () => (hasStoreName() ? '' : `
+  <div class="alert alert-warning" role="status">
+    <i class="fa-solid fa-triangle-exclamation mt-0.5" aria-hidden="true"></i>
+    <span>Your business name isn't set yet, so invoices will show "${escapeHTML(getBrandName())}". <a class="font-semibold underline" href="settings.html">Add it in Settings → Store Profile</a> and it appears here automatically.</span>
+  </div>`);
+
 /** Currency of the invoice being edited/created — line amounts and totals in the editor use it. */
 let editorCurrency = getCurrency();
 
 export async function initInvoicesPage() {
-  const [customers, products] = await Promise.all([api.customers.list(), api.products.list()]);
-  lookups = { customers, products };
+  const loadLookups = async () => {
+    const [customers, products] = await Promise.all([api.customers.list(), api.products.list()]);
+    lookups = { customers, products };
+  };
+  await loadLookups();
 
   buildTable();
   await refresh();
+
+  // Live: invoices created, sent or paid on other devices.
+  watchData(['invoices'], refresh);
+  watchData(['customers', 'products'], loadLookups);
 
   document.getElementById('create-invoice-btn').addEventListener('click', () => openEditor());
   document.getElementById('from-order-btn').addEventListener('click', () => openFromOrderPicker());
@@ -99,6 +114,7 @@ function buildTable() {
       },
     ],
     pageSize: 10,
+    onRender: wireRowActions, // row menus must be re-attached every time the rows are redrawn (paging, sorting, live updates)
     searchKeys: [],
     rowKey: (row) => row.id,
     defaultSort: { key: 'number', dir: 'desc' },
@@ -147,7 +163,6 @@ function applyFilters() {
       || inv.billTo.name.toLowerCase().includes(term)
       || inv.billTo.email.toLowerCase().includes(term);
   }));
-  wireRowActions();
 }
 
 function wireRowActions() {
@@ -253,6 +268,7 @@ function openEditor(existing = null, prefill = null) {
     size: 'xl',
     bodyHTML: `
       <div class="space-y-5">
+        ${missingNameNotice()}
         ${sourceNote}
         <div class="grid sm:grid-cols-2 gap-4">
           <div class="space-y-3">
@@ -545,7 +561,7 @@ function invoiceDocumentHTML(invoice) {
     <article class="invoice-doc">
       <header class="invoice-doc__head">
         <div>
-          <p class="invoice-doc__store">${escapeHTML(s.storeName)}</p>
+          <p class="invoice-doc__store">${escapeHTML(getBrandName())}</p>
           ${s.storeAddress ? `<p>${multiline(s.storeAddress)}</p>` : ''}
           ${s.storePhone ? `<p>${escapeHTML(s.storePhone)}</p>` : ''}
           ${s.storeEmail ? `<p>${escapeHTML(s.storeEmail)}</p>` : ''}
@@ -605,7 +621,7 @@ function printInvoice(invoice) {
 
 function emailInvoice(invoice) {
   const s = getSettings();
-  const subject = `Invoice ${invoice.number} from ${s.storeName}`;
+  const subject = `Invoice ${invoice.number} from ${getBrandName()}`;
   const lines = [
     `Hi ${invoice.billTo.name},`,
     '',
@@ -617,7 +633,7 @@ function emailInvoice(invoice) {
     ...(invoice.notes ? ['', invoice.notes] : []),
     '',
     'Thank you for your business.',
-    s.storeName,
+    getBrandName(),
   ];
   window.location.href = `mailto:${encodeURIComponent(invoice.billTo.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
 }
@@ -627,7 +643,7 @@ function openViewModal(invoice) {
   const el = modal.open({
     title: escapeHTML(invoice.number),
     size: 'xl',
-    bodyHTML: `<div class="invoice-preview">${invoiceDocumentHTML(invoice)}</div>`,
+    bodyHTML: `${missingNameNotice() ? `<div class="mb-3">${missingNameNotice()}</div>` : ''}<div class="invoice-preview">${invoiceDocumentHTML(invoice)}</div>`,
     footerHTML: `
       ${isOpen ? '<button class="btn btn-secondary" id="inv-edit" type="button"><i class="fa-solid fa-pen"></i> Edit</button>' : ''}
       ${invoice.billTo.email ? '<button class="btn btn-secondary" id="inv-email" type="button"><i class="fa-solid fa-envelope"></i> Email</button>' : ''}

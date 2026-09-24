@@ -5,6 +5,7 @@
  * entries are appended elsewhere (seed data today, real user/system
  * actions once Phases 4+ finish wiring writes everywhere).
  */
+import { watchData } from '../services/live-data.js';
 import { api } from '../services/api.service.js';
 import { DataTable } from '../components/table.js';
 import { formatDateTime, initials } from '../utils/formatters.js';
@@ -32,9 +33,9 @@ export async function initActivityLogPage() {
     emptyState: { icon: 'fa-clock-rotate-left', title: 'No activity yet', message: 'Actions taken across the system will show up here.' },
   });
 
-  table.setLoading();
-  const entries = await api.activityLog.list();
-  table.setData(entries);
+  const load = async () => { table.setLoading(); table.setData(await api.activityLog.list()); };
+  await load();
+  watchData(['activityLog'], load); // live: new entries appear as people work
 
   document.getElementById('activity-search').addEventListener('input', debounce((e) => table.setSearchTerm(e.target.value), 200));
 }

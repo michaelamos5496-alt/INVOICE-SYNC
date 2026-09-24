@@ -132,12 +132,22 @@
       getTopProducts, getRecentOrders, getRecentActivity,
     } from '/assets/js/services/analytics.service.js';
     import { api } from '/assets/js/services/api.service.js';
+    import { watchData } from '/assets/js/services/live-data.js';
+    import { escapeHTML } from '/assets/js/utils/helpers.js';
 
     await bootstrapApp();
 
     document.getElementById('dashboard-date').textContent =
       `Here's what's happening across your shop today, ${formatDate(new Date(), { weekday: 'long' })}.`;
 
+    applyChartDefaults(Chart);
+    let recentTable; // created once, so paging/sorting survive a live refresh
+
+    /**
+     * Draws the whole dashboard from current data. Runs once at load, then again whenever anything it shows
+     * changes — including changes made on other devices (see watchData at the bottom).
+     */
+    async function renderDashboard() {
     // ---- KPI stat cards ----
     const stats = await getDashboardStats();
     renderStatCards(document.getElementById('stat-cards'), [
@@ -152,10 +162,10 @@
     ]);
 
     // ---- Charts ----
-    applyChartDefaults(Chart);
     const colors = getChartColors();
 
     const salesTrend = await getSalesTrend(14);
+    Chart.getChart('chart-sales-trend')?.destroy(); // a redraw replaces the old chart
     new Chart(document.getElementById('chart-sales-trend'), {
       type: 'line',
       data: {
@@ -183,6 +193,7 @@
     });
 
     const stockMovement = await getStockMovementTrend(14);
+    Chart.getChart('chart-stock-movement')?.destroy();
     new Chart(document.getElementById('chart-stock-movement'), {
       type: 'bar',
       data: {
@@ -212,7 +223,7 @@
         <div class="flex items-center gap-3">
           <span class="w-7 h-7 rounded-full bg-primary-50 text-primary-600 text-xs font-bold grid place-items-center shrink-0">${i + 1}</span>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium truncate">${row.product.name}</p>
+            <p class="text-sm font-medium truncate">${escapeHTML(row.product.name)}</p>
             <p class="text-xs text-[var(--text-muted)]">${row.units} units sold</p>
           </div>
           <span class="text-sm font-semibold shrink-0">${formatCurrency(row.revenue)}</span>
@@ -228,10 +239,10 @@
     } else {
       activityEl.innerHTML = activity.map((a) => `
         <div class="flex items-start gap-3">
-          <span class="w-7 h-7 rounded-full bg-[var(--surface-sunken)] text-[var(--text-secondary)] text-[10px] font-bold grid place-items-center shrink-0 mt-0.5">${initials(a.actor)}</span>
+          <span class="w-7 h-7 rounded-full bg-[var(--surface-sunken)] text-[var(--text-secondary)] text-[10px] font-bold grid place-items-center shrink-0 mt-0.5">${escapeHTML(initials(a.actor))}</span>
           <div class="flex-1 min-w-0">
-            <p class="text-sm"><span class="font-medium">${a.actor}</span> ${a.action.toLowerCase()}</p>
-            <p class="text-xs text-[var(--text-muted)] truncate">${a.target}</p>
+            <p class="text-sm"><span class="font-medium">${escapeHTML(a.actor)}</span> ${escapeHTML(a.action.toLowerCase())}</p>
+            <p class="text-xs text-[var(--text-muted)] truncate">${escapeHTML(a.target)}</p>
           </div>
           <span class="text-[11px] text-[var(--text-muted)] shrink-0">${timeAgo(a.createdAt)}</span>
         </div>
@@ -251,8 +262,8 @@
         <div class="flex items-start gap-2.5">
           <span class="badge ${severityBadge[n.severity] ?? 'badge-neutral'} mt-0.5"><span class="badge-dot"></span></span>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium">${n.title}</p>
-            <p class="text-xs text-[var(--text-secondary)]">${n.message}</p>
+            <p class="text-sm font-medium">${escapeHTML(n.title)}</p>
+            <p class="text-xs text-[var(--text-secondary)]">${escapeHTML(n.message)}</p>
           </div>
         </div>
       `).join('');
@@ -260,7 +271,7 @@
 
     // ---- Latest transactions table ----
     const recentOrders = await getRecentOrders(20);
-    const table = new DataTable(document.getElementById('recent-orders-table'), {
+    recentTable ??= new DataTable(document.getElementById('recent-orders-table'), {
       columns: [
         { key: 'id', label: 'Order', render: (row) => `<span class="font-medium">#${row.id.toUpperCase()}</span>` },
         {
@@ -269,7 +280,7 @@
             ? `<span class="badge badge-info"><i class="fa-solid fa-store"></i> In-store</span>`
             : `<span class="badge badge-neutral"><i class="fa-solid fa-globe"></i> Online</span>`,
         },
-        { key: 'customer', label: 'Customer', render: (row) => row.customer?.name ?? 'Walk-in customer' },
+        { key: 'customer', label: 'Customer', render: (row) => escapeHTML(row.customer?.name ?? 'Walk-in customer') },
         { key: 'total', label: 'Total', align: 'right', render: (row) => formatCurrency(row.total) },
         { key: 'createdAt', label: 'Date', render: (row) => timeAgo(row.createdAt) },
       ],
@@ -279,7 +290,15 @@
       defaultSort: { key: 'createdAt', dir: 'desc' },
       emptyState: { icon: 'fa-receipt', title: 'No transactions yet' },
     });
-    table.setData(recentOrders);
+    recentTable.setData(recentOrders);
+    }
+
+    await renderDashboard();
+    watchData(
+      ['products', 'sales', 'onlineOrders', 'customers', 'activityLog', 'notifications', 'inventoryLog'],
+      renderDashboard,
+      { debounceMs: 600 },
+    );
   </script>
 </body>
 </html>

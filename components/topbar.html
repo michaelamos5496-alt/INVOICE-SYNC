@@ -21,6 +21,11 @@
       <i class="fa-solid fa-cash-register"></i> New Sale
     </a>
 
+    <span id="sync-chip" class="hidden items-center gap-1.5 h-8 px-2.5 rounded-full text-xs font-medium border" style="border-color: var(--border-subtle); background: var(--surface-sunken)" role="status" aria-live="polite">
+      <span id="sync-dot" class="w-2 h-2 rounded-full shrink-0" style="background: var(--color-warning-500)"></span>
+      <span id="sync-label" class="hidden sm:inline"></span>
+    </span>
+
     <button id="theme-toggle" class="w-9 h-9 rounded-lg grid place-items-center hover:bg-[var(--surface-sunken)]" aria-label="Toggle theme">
       <i class="fa-solid fa-moon"></i>
     </button>

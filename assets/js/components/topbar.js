@@ -7,6 +7,7 @@ import { api } from '../services/api.service.js';
 import { NAV_ITEMS_FLAT } from '../config/nav.config.js';
 import { debounce, escapeHTML } from '../utils/helpers.js';
 import { timeAgo } from '../utils/formatters.js';
+import { initSyncStatus } from './sync-status.js';
 
 /** Applies the persisted theme before first paint is handled inline in
  *  each page's <head> (see the tiny inline script in pages/*.html) to
@@ -121,4 +122,5 @@ export function initTopbar() {
   initThemeToggle();
   initGlobalSearch();
   initNotificationBell();
+  initSyncStatus();
 }
