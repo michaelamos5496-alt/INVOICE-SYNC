@@ -57,7 +57,7 @@ export async function getSalesReport(days = 30) {
   };
 }
 
-/** Stock value and health, broken down by category. */
+/** Stock value (at selling price) and health, broken down by category. */
 export async function getInventoryReport() {
   const [products, categories] = await Promise.all([api.products.list(), api.categories.list()]);
   const categoryMap = new Map(categories.map((c) => [c.id, c.name]));
@@ -65,11 +65,11 @@ export async function getInventoryReport() {
   const byCategory = {};
   for (const p of products) {
     const name = categoryMap.get(p.categoryId) ?? 'Uncategorized';
-    byCategory[name] = (byCategory[name] ?? 0) + p.stockQuantity * p.costPrice;
+    byCategory[name] = (byCategory[name] ?? 0) + (p.stockQuantity ?? 0) * (p.sellingPrice ?? 0);
   }
 
   return {
-    totalValue: products.reduce((s, p) => s + p.stockQuantity * p.costPrice, 0),
+    totalValue: products.reduce((s, p) => s + (p.stockQuantity ?? 0) * (p.sellingPrice ?? 0), 0),
     totalUnits: products.reduce((s, p) => s + p.stockQuantity, 0),
     lowStockCount: products.filter((p) => p.stockStatus === 'low_stock').length,
     outOfStockCount: products.filter((p) => p.stockStatus === 'out_of_stock').length,

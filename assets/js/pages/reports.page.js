@@ -117,7 +117,7 @@ async function renderInventoryTab() {
       { key: 'name', label: 'Product', sortable: true, render: (row) => escapeHTML(row.name) },
       { key: 'stockQuantity', label: 'Units', align: 'right', sortable: true },
       { key: 'costPrice', label: 'Unit Cost', align: 'right', render: (row) => formatCurrency(row.costPrice) },
-      { key: 'value', label: 'Stock Value', align: 'right', sortable: true, render: (row) => formatCurrency(row.stockQuantity * row.costPrice) },
+      { key: 'value', label: 'Stock Value', align: 'right', sortable: true, render: (row) => formatCurrency((row.stockQuantity ?? 0) * (row.sellingPrice ?? 0)) },
     ],
     pageSize: 6, searchKeys: ['name'], rowKey: (row) => row.id,
     defaultSort: { key: 'value', dir: 'desc' },

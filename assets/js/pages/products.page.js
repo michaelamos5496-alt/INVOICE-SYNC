@@ -41,6 +41,32 @@ const STOCK_BADGE = {
 let table;
 let lookups = { categories: [], brands: [], suppliers: [], warehouses: [] };
 let variantState = [];
+let editingProduct = null; // the product open in the form (null when adding), so stock can follow its variants
+
+const variantUnits = (variants) => variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+
+/**
+ * The stock quantity a product should have given its variant rows. Variants own the stock split: with none,
+ * the typed quantity stands; the first time variants are added, their total becomes the stock; after that,
+ * edits to variant stock move the product's stock by the same amount (so sales made since don't get overwritten).
+ */
+function stockFromVariants(typedQuantity) {
+  if (!variantState.length) return typedQuantity;
+  const before = editingProduct?.variants ?? [];
+  if (!before.length) return variantUnits(variantState);
+  return Math.max(0, (editingProduct.stockQuantity ?? 0) + variantUnits(variantState) - variantUnits(before));
+}
+
+/** With variants, the Stock Quantity field is derived from them, so it's shown read-only and kept in step. */
+function syncStockField() {
+  const input = document.getElementById('f-stock');
+  if (!input) return;
+  const hasVariants = variantState.length > 0;
+  input.readOnly = hasVariants;
+  if (hasVariants) input.value = stockFromVariants(0);
+  const hint = document.getElementById('f-stock-hint');
+  if (hint) hint.hidden = !hasVariants;
+}
 let imageState = [];
 
 export async function initProductsPage() {
@@ -224,6 +250,7 @@ function renderVariantRows() {
     input.addEventListener('input', () => {
       const key = input.dataset.variantField;
       variantState[idx][key] = ['stock', 'priceAdjustment'].includes(key) ? Number(input.value) : input.value;
+      if (key === 'stock') syncStockField();
       if (key === 'color' || key === 'size') {
         // Update the heading in place (a full re-render would drop focus mid-typing) and clear any error.
         row.querySelector('[data-variant-title]').innerHTML = variantTitleHTML(variantState[idx], idx);
@@ -234,6 +261,7 @@ function renderVariantRows() {
   container.querySelectorAll('[data-remove-variant]').forEach((btn) => {
     btn.addEventListener('click', () => { variantState.splice(Number(btn.dataset.removeVariant), 1); renderVariantRows(); });
   });
+  syncStockField();
 }
 
 function clearVariantError(row) {
@@ -456,6 +484,7 @@ function buildFormHTML(product) {
             <label class="field-label">Stock Quantity</label>
             <input id="f-stock" type="number" min="0" class="input" value="${p.stockQuantity ?? 0}" />
             <p class="field-hint">${product ? 'Changing this logs a stock count adjustment.' : 'Sets the starting quantity on creation.'}</p>
+            <p id="f-stock-hint" class="field-hint" hidden>Worked out from your variants' stock — change it on the Variants tab.</p>
           </div>
           <div>
             <label class="field-label">Minimum Stock</label>
@@ -506,6 +535,7 @@ function buildFormHTML(product) {
 export function openProductModal(product = null) {
   imageState.forEach(revokePreview);
   variantState = product?.variants ? structuredClone(product.variants) : [];
+  editingProduct = product;
   imageState = product?.images ? structuredClone(product.images) : [];
 
   const el = modal.open({
@@ -589,7 +619,7 @@ export function openProductModal(product = null) {
       costPrice: Number(el.querySelector('#f-cost').value) || 0,
       sellingPrice,
       discount: Number(el.querySelector('#f-discount').value) || 0,
-      stockQuantity: Number(el.querySelector('#f-stock').value) || 0,
+      stockQuantity: stockFromVariants(Number(el.querySelector('#f-stock').value) || 0),
       minStock: Number(el.querySelector('#f-min-stock').value) || 0,
       maxStock: Number(el.querySelector('#f-max-stock').value) || 0,
       variants: variantState,

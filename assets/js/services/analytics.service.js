@@ -42,7 +42,8 @@ export async function getDashboardStats() {
 
   const lowStock = products.filter((p) => p.stockStatus === STOCK_STATUS.LOW_STOCK).length;
   const outOfStock = products.filter((p) => p.stockStatus === STOCK_STATUS.OUT_OF_STOCK).length;
-  const inventoryValue = products.reduce((sum, p) => sum + (p.stockQuantity ?? 0) * (p.costPrice ?? 0), 0);
+  // Valued at selling price (what the stock would sell for), not cost.
+  const inventoryValue = products.reduce((sum, p) => sum + (p.stockQuantity ?? 0) * (p.sellingPrice ?? 0), 0);
 
   const todaysOrders = filterSince(orders, daysAgo(0));
   const weeklyOrders = filterSince(orders, daysAgo(6));
