@@ -14,16 +14,12 @@ import { modal } from '../components/modal.js';
 import { STORAGE_KEYS } from '../config/constants.js';
 import { CLOUD_SYNC } from '../config/supabase.config.js';
 import { readLocalSummary, uploadLocalDataToCloud } from '../services/migrate.service.js';
+import { INTEGRATIONS, integrationByKey } from '../config/integrations.config.js';
+import { integrationsSupported, loadStatuses, connect, testConnection, disconnect, sendTestSms } from '../services/integrations.service.js';
+import { amIOwner } from '../services/staff.service.js';
 import { escapeHTML } from '../utils/helpers.js';
 
 const TIMEZONES = ['Africa/Accra', 'Africa/Lagos', 'UTC', 'America/New_York', 'Europe/London'];
-const INTEGRATIONS = [
-  { key: 'shopify', name: 'Shopify', icon: 'fa-shopify', style: 'fa-brands' },
-  { key: 'woocommerce', name: 'WooCommerce', icon: 'fa-wordpress', style: 'fa-brands' },
-  { key: 'stripe', name: 'Stripe', icon: 'fa-stripe', style: 'fa-brands' },
-  { key: 'paystack', name: 'Paystack', icon: 'fa-credit-card', style: 'fa-solid' },
-  { key: 'hubtel', name: 'Hubtel', icon: 'fa-mobile-screen', style: 'fa-solid' },
-];
 
 export async function initSettingsPage() {
   initTabs(document.getElementById('settings-tabs'));
@@ -120,19 +116,206 @@ function renderTaxCurrencyForm() {
   });
 }
 
-function renderIntegrations() {
-  document.getElementById('integrations-list').innerHTML = INTEGRATIONS.map((integration) => `
-    <div class="card p-4 flex items-center gap-4">
-      <span class="w-10 h-10 rounded-lg bg-[var(--surface-sunken)] grid place-items-center shrink-0">
-        <i class="${integration.style} ${integration.icon} text-lg"></i>
-      </span>
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium">${integration.name}</p>
-        <span class="badge badge-neutral mt-1">Not Connected</span>
-      </div>
-      <button class="btn btn-secondary btn-sm" disabled title="Live connections arrive with Phase 10 API Integration">Connect</button>
-    </div>
-  `).join('');
+// ---------------------------------------------------------------------
+// Integrations
+// ---------------------------------------------------------------------
+const STATUS_BADGES = {
+  disconnected: { cls: 'badge-neutral', label: 'Not connected' },
+  saved: { cls: 'badge-warning', label: 'Saved — not verified' },
+  connected: { cls: 'badge-success', label: 'Connected' },
+  error: { cls: 'badge-danger', label: 'Problem' },
+};
+
+async function renderIntegrations() {
+  const list = document.getElementById('integrations-list');
+  const supported = integrationsSupported();
+  let statuses = new Map();
+  let isOwner = false;
+
+  if (supported) {
+    try {
+      [statuses, isOwner] = await Promise.all([loadStatuses(), amIOwner()]);
+    } catch (err) {
+      list.innerHTML = `<p class="alert alert-danger" role="alert"><i class="fa-solid fa-circle-exclamation mt-0.5"></i><span>${escapeHTML(err.message)}${/does not exist|schema cache|PGRST20/i.test(err.message) ? ' — run the latest supabase/schema.sql in your Supabase SQL Editor.' : ''}</span></p>`;
+      return;
+    }
+  }
+
+  const intro = supported
+    ? (isOwner
+      ? 'Keys you enter are stored securely and can\'t be viewed again — not even by you. Only the server-side checker uses them.'
+      : 'Only the shop owner can connect or change integrations. You can see what\'s connected.')
+    : 'Connecting a service needs live sharing switched on, because the keys must be kept safely in your database (see the README). Until then these stay off.';
+
+  list.innerHTML = `
+    <p class="text-sm text-[var(--text-secondary)] mb-1">${escapeHTML(intro)}</p>
+    ${INTEGRATIONS.map((integration) => {
+      const state = statuses.get(integration.key) ?? { status: 'disconnected', settings: {}, message: '' };
+      const badge = STATUS_BADGES[state.status] ?? STATUS_BADGES.disconnected;
+      const connected = state.status !== 'disconnected';
+      const details = integration.fields.filter((f) => !f.secret && state.settings?.[f.key]).map((f) => `${f.label}: ${escapeHTML(state.settings[f.key])}`).join(' · ');
+      return `
+        <div class="card p-4 space-y-3" data-integration="${integration.key}">
+          <div class="flex items-start gap-4">
+            <span class="w-10 h-10 rounded-lg bg-[var(--surface-sunken)] grid place-items-center shrink-0">
+              <i class="${integration.style} ${integration.icon} text-lg" aria-hidden="true"></i>
+            </span>
+            <div class="flex-1 min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-sm font-medium">${integration.name}</p>
+                <span class="badge ${badge.cls}">${badge.label}</span>
+              </div>
+              <p class="text-xs text-[var(--text-muted)] mt-0.5">${integration.summary}</p>
+              ${details ? `<p class="text-xs text-[var(--text-secondary)] mt-1 break-words">${details}</p>` : ''}
+              ${connected && state.message ? `<p class="text-xs mt-1 ${state.status === 'error' ? 'text-danger-500' : 'text-[var(--text-secondary)]'}">${escapeHTML(state.message)}</p>` : ''}
+              ${connected && state.connectedBy ? `<p class="text-[11px] text-[var(--text-muted)] mt-1">Set up by ${escapeHTML(state.connectedBy)}${state.checkedAt ? ` · last checked ${escapeHTML(new Date(state.checkedAt).toLocaleString())}` : ''}</p>` : ''}
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            ${!connected
+              ? `<button class="btn btn-primary btn-sm" data-action="connect" ${supported && isOwner ? '' : 'disabled'} ${supported ? '' : 'title="Turn on live sharing first"'}><i class="fa-solid fa-plug"></i> Connect</button>`
+              : (isOwner ? `
+                <button class="btn btn-secondary btn-sm" data-action="test"><i class="fa-solid fa-rotate"></i> Test connection</button>
+                ${integration.smsTest ? '<button class="btn btn-secondary btn-sm" data-action="sms"><i class="fa-solid fa-message"></i> Send test SMS</button>' : ''}
+                <button class="btn btn-secondary btn-sm" data-action="connect"><i class="fa-solid fa-key"></i> Update keys</button>
+                <button class="btn btn-ghost btn-sm text-danger-500" data-action="disconnect"><i class="fa-solid fa-link-slash"></i> Disconnect</button>` : '')}
+          </div>
+        </div>`;
+    }).join('')}`;
+
+  list.querySelectorAll('[data-integration]').forEach((card) => {
+    const key = card.dataset.integration;
+    card.querySelector('[data-action="connect"]')?.addEventListener('click', () => openConnectModal(key, statuses.get(key)));
+    card.querySelector('[data-action="test"]')?.addEventListener('click', (e) => runTest(key, e.currentTarget));
+    card.querySelector('[data-action="sms"]')?.addEventListener('click', () => openSmsModal());
+    card.querySelector('[data-action="disconnect"]')?.addEventListener('click', () => confirmDisconnect(key));
+  });
+}
+
+function reportResult(name, result) {
+  if (result.ok === true) toast.success(result.message || `${name} is connected.`, { duration: 7000 });
+  else if (result.ok === null) toast.info(result.message, { duration: 9000 });
+  else toast.danger(result.message || `Couldn't connect to ${name}.`, { duration: 9000 });
+}
+
+async function runTest(key, button) {
+  const integration = integrationByKey(key);
+  button.disabled = true;
+  try {
+    reportResult(integration.name, await testConnection(key));
+  } catch (err) {
+    toast.danger(err.message);
+  }
+  await renderIntegrations();
+}
+
+async function confirmDisconnect(key) {
+  const integration = integrationByKey(key);
+  const ok = await modal.confirm({
+    title: `Disconnect ${integration.name}?`,
+    message: 'The saved keys are deleted from your database. You can connect again any time by entering them again.',
+    confirmLabel: 'Disconnect',
+  });
+  if (!ok) return;
+  try {
+    await disconnect(key);
+    toast.success(`${integration.name} disconnected and its keys deleted.`);
+  } catch (err) {
+    toast.danger(err.message);
+  }
+  await renderIntegrations();
+}
+
+function openConnectModal(key, state) {
+  const integration = integrationByKey(key);
+  const saved = state && state.status !== 'disconnected';
+  const savedSecrets = Object.fromEntries(integration.fields.filter((f) => f.secret).map((f) => [f.key, saved]));
+
+  const fieldHTML = (field) => `
+    <div>
+      <label class="field-label" for="int-${field.key}">${field.label}${field.secret ? ' <span class="text-[var(--text-muted)] font-normal">(kept private)</span>' : ''}</label>
+      <input id="int-${field.key}" class="input" ${field.secret ? 'type="password"' : 'type="text"'} autocomplete="off" autocapitalize="none" spellcheck="false"
+        value="${field.secret ? '' : escapeHTML(state?.settings?.[field.key] ?? '')}"
+        placeholder="${field.secret && saved ? 'Saved — leave blank to keep it' : escapeHTML(field.placeholder ?? '')}"
+        aria-describedby="int-${field.key}-hint" />
+      <p id="int-${field.key}-hint" class="field-hint">${escapeHTML(field.hint ?? '')}</p>
+      <p class="field-error hidden" data-error-for="${field.key}" role="alert"></p>
+    </div>`;
+
+  const el = modal.open({
+    title: `${saved ? 'Update' : 'Connect'} ${integration.name}`,
+    size: 'md',
+    bodyHTML: `
+      <form id="integration-form" class="space-y-4" novalidate>
+        <p class="text-sm text-[var(--text-secondary)]">Find these in: <strong>${escapeHTML(integration.where)}</strong>.
+          <a class="text-primary-600 font-medium underline" href="${integration.docsUrl}" target="_blank" rel="noopener noreferrer">Open it <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i></a></p>
+        ${integration.fields.map(fieldHTML).join('')}
+        <p class="text-xs text-[var(--text-muted)]"><i class="fa-solid fa-lock mr-1"></i> Keys are sent over a secure connection and stored so that nobody using this app can read them back.</p>
+      </form>`,
+    footerHTML: `
+      <button class="btn btn-secondary" data-modal-close type="button">Cancel</button>
+      <button class="btn btn-primary" id="save-integration" type="button"><i class="fa-solid fa-plug"></i> Save &amp; test connection</button>`,
+  });
+
+  const showErrors = (errors) => el.querySelectorAll('[data-error-for]').forEach((p) => {
+    const message = errors[p.dataset.errorFor];
+    p.textContent = message ?? '';
+    p.classList.toggle('hidden', !message);
+    el.querySelector(`#int-${p.dataset.errorFor}`)?.setAttribute('aria-invalid', message ? 'true' : 'false');
+  });
+
+  const save = async () => {
+    const button = el.querySelector('#save-integration');
+    const values = Object.fromEntries(integration.fields.map((f) => [f.key, el.querySelector(`#int-${f.key}`).value]));
+    button.disabled = true;
+    button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…';
+    try {
+      const { errors, result } = await connect(key, values, { alreadySaved: savedSecrets });
+      if (errors) { showErrors(errors); return; }
+      // The typed keys are gone from the form the moment they're saved.
+      integration.fields.forEach((f) => { if (f.secret) el.querySelector(`#int-${f.key}`).value = ''; });
+      modal.close();
+      reportResult(integration.name, result);
+      await renderIntegrations();
+    } catch (err) {
+      toast.danger(err.message);
+    } finally {
+      if (button.isConnected) { button.disabled = false; button.innerHTML = '<i class="fa-solid fa-plug"></i> Save &amp; test connection'; }
+    }
+  };
+  el.querySelector('#save-integration').addEventListener('click', save);
+  el.querySelector('#integration-form').addEventListener('submit', (e) => { e.preventDefault(); save(); });
+}
+
+function openSmsModal() {
+  const el = modal.open({
+    title: 'Send a test text message',
+    size: 'sm',
+    bodyHTML: `
+      <div class="space-y-3">
+        <p class="text-sm text-[var(--text-secondary)]">Hubtel can only be confirmed by really sending a message. Enter your own phone number, with country code.</p>
+        <div>
+          <label class="field-label" for="sms-to">Phone number</label>
+          <input id="sms-to" class="input" type="tel" inputmode="tel" placeholder="+233240000000" autocomplete="tel" />
+        </div>
+      </div>`,
+    footerHTML: `
+      <button class="btn btn-secondary" data-modal-close type="button">Cancel</button>
+      <button class="btn btn-primary" id="send-sms" type="button"><i class="fa-solid fa-paper-plane"></i> Send</button>`,
+  });
+  el.querySelector('#send-sms').addEventListener('click', async () => {
+    const button = el.querySelector('#send-sms');
+    button.disabled = true;
+    try {
+      const result = await sendTestSms(el.querySelector('#sms-to').value);
+      modal.close();
+      reportResult('Hubtel', result);
+      await renderIntegrations();
+    } catch (err) {
+      toast.danger(err.message);
+      button.disabled = false;
+    }
+  });
 }
 
 function renderPreferencesForm() {
