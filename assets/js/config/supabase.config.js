@@ -22,11 +22,12 @@ export const CLOUD_SYNC = true;
 export const GUEST_NAME = 'Michael Amos';
 
 /**
- * Whether the login page offers "Create an account". Creating an account does NOT
- * grant access by itself: the shop owner must also approve the email (Employees →
- * "Can sign in"), and the person must confirm their email address.
+ * Whether the login page offers "Create an account" (anyone could then start their own shop).
+ * false → accounts are created by hand in Supabase (Authentication → Users → Add user), which is
+ * how you invite people. Also switch off "Allow new users to sign up" in Supabase (Authentication →
+ * Sign In / Providers) so nobody can create an account by calling the API directly.
  */
-export const ALLOW_SIGNUP = true;
+export const ALLOW_SIGNUP = false;
 
 /** Supabase dashboard → Project Settings → API → "Project URL" and the "anon public" key. */
 export const SUPABASE_URL = 'https://lvszvpkxklgplrbktndb.supabase.co';
