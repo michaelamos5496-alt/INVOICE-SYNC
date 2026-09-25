@@ -18,8 +18,7 @@ import {
   getAccessState, refreshAccess, createShop, signIn, signUp, sendPasswordReset, updatePassword, resendVerification, signOut, safeNextPath,
 } from '../services/auth.service.js';
 import { getQueryParam, escapeHTML } from '../utils/helpers.js';
-import { getBrandName } from '../services/settings.service.js';
-import { initBrand } from '../utils/brand.js';
+import { APP_NAME } from '../config/constants.js';
 
 const COPY = {
   signin: { title: 'Welcome back', subtitle: 'Sign in to manage your shop.', submit: 'Sign in' },
@@ -41,7 +40,7 @@ let panelEmail = '';
 let lastCredentials = null; // kept in memory only, so "I've confirmed — continue" can sign in without retyping
 
 export async function initLoginPage() {
-  initBrand({ title: false }); // this page sets its own <title> per mode (see setMode)
+  // No shop's name here: the sign-in page belongs to the app, not to whichever shop last used this browser.
 
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   recovering = hash.get('type') === 'recovery';
@@ -115,7 +114,7 @@ function setMode(next, { keepAlert = false, focus = true } = {}) {
 
   $('auth-title').textContent = copy.title;
   $('auth-subtitle').textContent = typeof copy.subtitle === 'function' ? copy.subtitle() : copy.subtitle;
-  document.title = `${mode === 'signup' ? 'Create account' : mode === 'signin' ? 'Sign in' : copy.title} · ${getBrandName()}`;
+  document.title = `${mode === 'signup' ? 'Create account' : mode === 'signin' ? 'Sign in' : copy.title} · ${APP_NAME}`;
 
   $('auth-form').hidden = isPanel;
   $('auth-panel').hidden = !isPanel;
@@ -153,7 +152,7 @@ function renderSwitchLinks() {
   const el = $('auth-switch');
   const link = (target, label) => `<button type="button" class="font-semibold text-primary-600 hover:underline" data-switch="${target}">${label}</button>`;
 
-  if (mode === 'signin') el.innerHTML = ALLOW_SIGNUP ? `New to ${escapeHTML(getBrandName())}? ${link('signup', 'Create an account')}` : 'No account yet? Ask the person who runs InvSync to create one for you.';
+  if (mode === 'signin') el.innerHTML = ALLOW_SIGNUP ? `New to ${escapeHTML(APP_NAME)}? ${link('signup', 'Create an account')}` : 'No account yet? Ask the person who runs InvSync to create one for you.';
   else if (mode === 'signup') el.innerHTML = `Already have an account? ${link('signin', 'Sign in')}`;
   else if (mode === 'forgot') el.innerHTML = link('signin', '← Back to sign in');
   else if (mode === 'shop') el.innerHTML = `${link('check', 'Check again')} · ${link('signout', 'Sign out')}`;
