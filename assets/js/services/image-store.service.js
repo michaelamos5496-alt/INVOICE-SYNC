@@ -80,9 +80,21 @@ const cloudPath = (ref) => ref.slice(CLOUD_PREFIX.length);
 // ---------------------------------------------------------------------
 // Shared bucket (sync mode)
 // ---------------------------------------------------------------------
+let shopFolder = null;
+
+/** Each shop's photos go in a folder named after the shop, so one shop can never open another's (see schema.sql, section 9). */
+async function myShopFolder(client) {
+  if (!shopFolder) {
+    const { data, error } = await client.rpc('current_shop_id');
+    if (error || !data) throw new Error('Couldn\'t work out which shop these photos belong to — sign in again and retry.');
+    shopFolder = data;
+  }
+  return shopFolder;
+}
+
 async function cloudSave(blob) {
   const client = await getSupabase();
-  const path = `${crypto.randomUUID()}.${extensionFor(blob.type)}`;
+  const path = `${await myShopFolder(client)}/${crypto.randomUUID()}.${extensionFor(blob.type)}`;
   const { error } = await client.storage.from(IMAGE_BUCKET).upload(path, blob, { contentType: blob.type || 'image/jpeg', upsert: false });
   if (error) throw new Error(/row-level security|not authorized|403/i.test(error.message)
     ? 'You don\'t have permission to upload photos. Ask the shop owner if you need access.'

@@ -33,7 +33,7 @@ export const isConnectionError = (error) => !navigator.onLine || /failed to fetc
 /** Picks the right message for a startup failure: not set up yet vs. simply unreachable. */
 export function connectionProblemFor(error) {
   const text = `${error?.code ?? ''} ${error?.message ?? ''}`;
-  if (/PGRST20[25]|42P01|schema cache|could not find the table|is_staff/i.test(text)) {
+  if (/PGRST20[25]|42P01|schema cache|could not find the table|is_staff|current_shop_id/i.test(text)) {
     return {
       title: 'The database isn\'t set up yet',
       message: 'Run supabase/schema.sql in your Supabase project\'s SQL Editor (see the README), then reload this page.',

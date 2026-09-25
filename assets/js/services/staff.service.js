@@ -3,8 +3,8 @@
  *
  * An Employee record is just information about a person. Letting them into the app is a
  * separate, deliberate step — Employees → "Can sign in" — which adds their email to this list.
- * Only the Shop Owner can change the list; the database enforces that, so these calls fail
- * for anyone else. No-ops entirely while cloud sync is off.
+ * Each shop has its own list, and a person belongs to exactly one shop. Only the shop's owner can
+ * change its list; the database enforces both, so these calls fail for anyone else. No-ops entirely while cloud sync is off.
  */
 import { CLOUD_SYNC } from '../config/supabase.config.js';
 import { getSupabase } from './supabase.service.js';
@@ -43,7 +43,13 @@ export async function grantAccess({ email, role, name }) {
   if (!CLOUD_SYNC) return;
   const address = normalize(email);
   if (!address) throw new Error('Add an email address first — that\'s what they\'ll sign in with.');
-  await run((client) => client.from('staff').upsert({ email: address, role, name: name ?? '' }, { onConflict: 'email' }));
+  try {
+    await run((client) => client.from('staff').upsert({ email: address, role, name: name ?? '' }, { onConflict: 'email' }));
+  } catch (err) {
+    // The email is already on ANOTHER shop's list: the database refuses to touch that row (a login belongs to one shop only).
+    if (err.code === '42501') throw new Error('That email already belongs to another shop, so it can\'t be added to yours. They\'d need to sign in with a different email.');
+    throw err;
+  }
 }
 
 export async function revokeAccess(email) {

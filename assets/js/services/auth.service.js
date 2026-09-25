@@ -8,7 +8,9 @@
  *   on  → a person gets in only when ALL of these are true (see getAccessState):
  *           1. they're signed in,
  *           2. their email address is confirmed, and
- *           3. the shop owner has approved that email (a row in the database's `staff` table).
+ *           3. they belong to a shop: a row in the database's `staff` table ties their email to a shop —
+ *              either because they created one (createShop) or because a shop owner added their email.
+ *         Every shop's data is separate: the database only ever shows a person their own shop's rows.
  *         The database enforces (2) and (3) itself through row-level-security rules
  *         (supabase/schema.sql) — this file just reads the same facts so it can show the
  *         right screen instead of an error.
@@ -16,12 +18,15 @@
 import { CLOUD_SYNC, GUEST_NAME, isSupabaseConfigured } from '../config/supabase.config.js';
 import { getSupabase } from './supabase.service.js';
 import { clearCloudImageCache } from './image-store.service.js';
+import { storage } from './storage.service.js';
+import { STORAGE_KEYS } from '../config/constants.js';
 import { showConnectionProblem, isConnectionError, connectionProblemFor } from '../components/connection-screen.js';
 
 const LOGIN_PATH = '/pages/login.html';
 const DEFAULT_LANDING = '/pages/dashboard.html';
 
 let currentUser = null;
+let currentShop = null;
 let signingOut = false;
 
 // ---------------------------------------------------------------------
@@ -48,6 +53,11 @@ export function getCurrentUser() {
   return currentUser;
 }
 
+/** The shop the signed-in person belongs to — `{ id, name }` — valid after `requireSession()` has resolved (null in local mode). */
+export function getCurrentShop() {
+  return currentShop;
+}
+
 /** Name recorded in activity logs / audit trails for whoever is signed in. */
 export function getActorName() {
   return currentUser ? displayNameFor(currentUser) : 'system';
@@ -71,7 +81,7 @@ function friendlyError(error) {
   if (/already registered|already been registered/i.test(message)) return 'An account with that email already exists. Try signing in instead.';
   if (/password should be at least|weak password/i.test(message)) return 'Choose a stronger password (at least 8 characters).';
   if (/rate limit|too many|security purposes/i.test(message)) return 'Too many attempts. Please wait a minute and try again.';
-  if (/signups not allowed|signup is disabled/i.test(message)) return 'New sign-ups are turned off. Ask the shop owner to invite you.';
+  if (/signups not allowed|signup is disabled/i.test(message)) return 'New sign-ups are turned off right now.';
   if (/failed to fetch|networkerror|load failed/i.test(message)) return 'Can\'t reach the sign-in service. Check your internet connection.';
   if (/same password|different from the old/i.test(message)) return 'Choose a password you haven\'t used before.';
   return message;
@@ -92,8 +102,9 @@ async function run(fn) {
 // Access state — the single source of truth for "may this person use the app?"
 // ---------------------------------------------------------------------
 /**
- * @returns {Promise<{ state: 'signed-out' | 'unverified' | 'not-approved' | 'ok', user?: object }>}
- *   `ok` means signed in + email confirmed + approved by the owner.
+ * @returns {Promise<{ state: 'signed-out' | 'unverified' | 'no-shop' | 'ok', user?: object, shop?: { id: string, name: string } }>}
+ *   `ok` means signed in + email confirmed + in a shop. `no-shop` means confirmed but not in any shop yet —
+ *   the login page then asks them to name their new shop (or to ask an owner to add their email).
  */
 export async function getAccessState() {
   if (!CLOUD_SYNC) return { state: 'ok', user: guestUser() };
@@ -106,15 +117,40 @@ export async function getAccessState() {
   const user = toAppUser(session.user);
   if (!session.user.email_confirmed_at) return { state: 'unverified', user };
 
-  // is_staff() is defined in supabase/schema.sql: true only for a confirmed email that's on the staff list.
-  const { data: approved, error } = await client.rpc('is_staff');
+  let shop = await loadMyShop(client);
+
+  // Signed up with a shop name (the sign-up form asks for one) and not invited into an existing shop: create it now.
+  const wantedName = String(session.user.user_metadata?.shop_name ?? '').trim();
+  if (!shop && wantedName) {
+    const { error } = await client.rpc('create_my_shop', { p_shop_name: wantedName, p_owner_name: user.displayName });
+    if (error && !/already belongs|23505|duplicate/i.test(`${error.code} ${error.message}`)) throw error;
+    shop = await loadMyShop(client);
+  }
+
+  return shop ? { state: 'ok', user, shop } : { state: 'no-shop', user };
+}
+
+/** The signed-in person's shop, or null when they're not in one. Also tells "database not set up" apart from "no shop". */
+async function loadMyShop(client) {
+  const { data: shopId, error } = await client.rpc('current_shop_id');
   if (error) {
-    if (/is_staff/.test(error.message) || error.code === 'PGRST202') {
+    if (/current_shop_id/.test(error.message) || error.code === 'PGRST202') {
       throw new Error('The database isn\'t set up yet. Run supabase/schema.sql in the Supabase SQL Editor.');
     }
     throw error;
   }
-  return { state: approved === true ? 'ok' : 'not-approved', user };
+  if (!shopId) return null;
+  const { data: row } = await client.from('shops').select('id,name').eq('id', shopId).maybeSingle();
+  return { id: shopId, name: row?.name ?? '' };
+}
+
+/** Creates the signed-in person's own shop and makes them its Shop Owner. Returns the new access state. */
+export async function createShop(shopName) {
+  const name = String(shopName ?? '').trim();
+  if (!name) throw new Error('Give your shop a name.');
+  const before = await getAccessState();
+  await run((client) => client.rpc('create_my_shop', { p_shop_name: name, p_owner_name: before.user?.displayName ?? '' }));
+  return getAccessState();
 }
 
 /** Re-checks the account — used after the person confirms their email or the owner approves them. */
@@ -154,6 +190,7 @@ export async function requireSession() {
 
   if (access.state === 'ok') {
     currentUser = access.user;
+    currentShop = access.shop ?? null;
     watchForSignOut();
     return { user: currentUser };
   }
@@ -188,11 +225,12 @@ export async function signIn(email, password) {
 }
 
 /** Creates the login (saving the person's name) and emails a confirmation link. Returns the resulting access state — normally 'unverified'. */
-export async function signUp({ email, password, fullName }) {
+export async function signUp({ email, password, fullName, shopName = '' }) {
   const data = await run((client) => client.auth.signUp({
     email: email.trim(),
     password,
-    options: { data: { full_name: fullName.trim() }, emailRedirectTo: `${window.location.origin}${LOGIN_PATH}` },
+    // The shop name rides along with the account and is used to create the shop once the email is confirmed.
+    options: { data: { full_name: fullName.trim(), shop_name: shopName.trim() }, emailRedirectTo: `${window.location.origin}${LOGIN_PATH}` },
   }));
   // With confirmation on, an already-registered address comes back as a user with no identities.
   if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
@@ -218,6 +256,8 @@ export async function updatePassword(newPassword) {
 export async function signOut() {
   signingOut = true;
   currentUser = null;
+  currentShop = null;
+  storage.remove(STORAGE_KEYS.SETTINGS); // this browser's copy of the shop's settings must not greet the next person to sign in
   try {
     const client = await getSupabase();
     await client.auth.signOut();

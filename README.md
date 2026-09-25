@@ -424,16 +424,22 @@ in.
   `online-orders.service.js`). The database also refuses negative stock outright.
   Editing a record only changes the fields you touched, so renaming a product can't wipe out a
   stock change someone else just made.
+* **Many shops, one app.** Every person who signs up gets their own shop: after confirming their
+  email they name it and become its Shop Owner (`create_my_shop()` in `schema.sql`). Every row of
+  business data — products, sales, customers, settings, integrations, photos — carries the id of
+  its shop, and the database's row-level-security rules only ever show a person their own shop's
+  rows, so shops can't see each other. A login belongs to exactly one shop.
 * **Who gets in — three things, enforced by the database, not just the screens:**
-  1. a login (Supabase Auth), 2. a **confirmed** email address, 3. the email is on the
-  approved-staff list (`staff` table). Anyone can create a login, but until the owner approves
-  it they see nothing and can change nothing. The owner approves people in the app:
-  **Employees → Can sign in**. Only the Shop Owner can change the staff list or the store
-  settings; log entries (activity, stock movements) can be added but never edited or deleted;
-  and the database refuses to remove the last Shop Owner.
+  1. a login (Supabase Auth), 2. a **confirmed** email address, 3. a shop: the email is on a
+  shop's staff list (`staff` table) — either because they created the shop or because that shop's
+  owner added them under **Employees → Can sign in** (an invited person who signs up with that email
+  lands in the owner's shop instead of creating their own). Anyone can create a login, but without
+  a confirmed email and a shop they see nothing and can change nothing. Only a shop's Shop Owner can
+  change its staff list or its settings; log entries (activity, stock movements) can be added but
+  never edited or deleted; and the database refuses to remove a shop's last Shop Owner.
 * **Sign-in flow.** `bootstrapApp()` calls `requireSession()` (`services/auth.service.js`) first:
   people who aren't fully in are sent to `pages/login.html` — which handles sign in, create
-  account, "confirm your email", "waiting for approval", forgot password and choosing a new
+  account (with a shop name), "confirm your email", "name your shop", forgot password and choosing a new
   password — and land back on the page they asked for (`next` is validated, so it can't be used
   as an open redirect). Being offline is not the same as being signed out: a signed-in person
   whose connection drops gets a "can't reach your data" screen with **Try again**, not the login
@@ -451,8 +457,12 @@ in.
 1. Create a project at [supabase.com](https://supabase.com) (the free plan needs no card).
 2. **SQL Editor → New query:** paste all of `supabase/schema.sql` and run it. It creates the tables,
    the security rules, live-update publication and the private photo bucket, and is safe to re-run.
-3. **Add yourself as the first Shop Owner** — at the bottom of that file is one commented
-   `insert into public.staff …` line. Put your email (lowercase) and name in it and run it.
+   **Upgrading a database from the single-shop version?** Take a backup first (Database → Backups),
+   then run the same file: everything already in the database is moved into one shop (named after your
+   store name), your existing staff become that shop's staff, and nothing is deleted. Old product
+   photos stay where they are and remain visible to that first shop.
+3. There is no "add yourself as owner" step any more: sign up in the app (step 7) and name your shop —
+   that makes you its Shop Owner.
 4. **Project Settings → API:** copy the *Project URL* and the *anon public* key into
    `assets/js/config/supabase.config.js` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`). The anon key is meant
    to be public and is safe to commit. **Never** put the `service_role` key anywhere in this repo.
@@ -465,7 +475,8 @@ in.
    heavily rate-limited — for a real team, set up your own SMTP sender under
    *Authentication → SMTP Settings*, or add each person yourself under
    *Authentication → Users → Add user → Auto Confirm*.
-7. Set `CLOUD_SYNC = true`, deploy, then sign up with the email from step 3. If you had data in a
+7. Set `CLOUD_SYNC = true`, deploy, then sign up (or, if you upgraded, sign in with the email that was
+   already on your staff list). If you had data in a
    browser before, open **Settings → Data → Upload this browser's data** once (records that already
    exist in the database are never overwritten, and the browser's own copy is kept as a backup).
 8. Add your team under **Employees**, tick **Can sign in**, and ask them to create their login with
@@ -501,6 +512,60 @@ live-update servers — including two simultaneous "devices", races for the last
 offline, photos, and the approval flow. Those stand-ins are re-implementations, so the final check
 of any deployment is a quick pass against the real project: sign up, confirm, approve, and watch a
 change appear on a second device.
+
+## Integrations (Shopify, WooCommerce, Stripe, Paystack, Hubtel)
+
+**Settings → Integrations** lets the Shop Owner connect each service. It needs live sharing on
+(`CLOUD_SYNC = true`), because the keys must be kept safely in your database.
+
+**What's built:** for each provider you enter your keys, the app checks they work by asking the
+provider, and the card shows an honest status — *Not connected*, *Saved — not verified*, *Connected*
+or *Problem* (with the reason). You can update keys, re-test or disconnect (which deletes the keys).
+Typos are caught before anything is saved (a Paystack key must start `pk_`/`sk_`, a Shopify store
+address must end `.myshopify.com`, a WooCommerce address must be `https`, …).
+
+**What's NOT built yet:** *using* a connection. Taking a Paystack/Stripe/Hubtel payment at the POS,
+importing Shopify/WooCommerce orders, pushing stock levels back to a store, and sending SMS receipts
+are separate features that build on these connections.
+
+### How your keys are protected
+
+* **Write-only.** Keys are saved through a database function (`save_integration`, owner only). No screen,
+  API call or query in the app can read a saved key back — not staff, not even the owner. The
+  `integration_secrets` table has no read access for any signed-in role. You can replace a key, never view it.
+* **Only the server uses them.** "Test connection" runs the `integrations` Edge Function
+  (`supabase/functions/integrations/index.ts`), which reads the key with the server-side service key, calls the
+  provider, and returns just "connected / not connected and why" — never the key. It only runs for the Shop
+  Owner (checked against the database), refuses unsafe addresses (only `*.myshopify.com` for Shopify; only public
+  https sites for WooCommerce — never localhost or private networks) and does not follow redirects.
+* Disconnecting deletes the stored keys. Keys are stored in your Supabase database (encrypted at rest by
+  Supabase); if you want column-level encryption as well, look at Supabase Vault.
+
+### One-time setup
+
+1. **Update the database:** run the latest `supabase/schema.sql` again in the SQL Editor (safe to re-run) — it adds
+   the `integrations` and `integration_secrets` tables and the two functions.
+2. **Deploy the checker:** Supabase dashboard → **Edge Functions → Deploy a new function**, name it exactly
+   `integrations`, paste the contents of `supabase/functions/integrations/index.ts`, and deploy. (Or with the CLI:
+   `supabase functions deploy integrations`.) Supabase supplies its keys to the function automatically.
+   Until this is done, **Connect** still saves the keys but shows *Saved — not verified*.
+3. Open **Settings → Integrations** as the owner and press **Connect** on a provider.
+
+### Per-provider notes
+
+| Provider | You'll need | "Test connection" does |
+|---|---|---|
+| Paystack | public + secret key | asks Paystack for your balance |
+| Stripe | publishable + secret key | asks Stripe for your balance (a restricted key needs "Balance: read") |
+| Shopify | `your-store.myshopify.com` + Admin API access token | reads the shop's name |
+| WooCommerce | https shop address + REST consumer key & secret (Read/Write) | reads one product |
+| Hubtel | SMS sender name + Client ID + Client Secret | nothing automatically — Hubtel has no free key check, so use **Send test SMS** to confirm |
+
+**Verification status:** the database rules are tested against real PostgreSQL (27 checks, including "nobody can read a
+secret"), the Edge Function against pretend provider answers (52 checks), and the Settings screen in a real browser
+(36 checks). It has **not** been run against real Paystack/Stripe/Shopify/WooCommerce/Hubtel accounts — those calls follow
+each provider's public documentation, but the first *Test connection* on a real account is the true test. Hubtel's SMS
+endpoint in particular should be confirmed with a real test message.
 
 ## Core modules (navigation)
 

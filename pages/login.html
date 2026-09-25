@@ -67,6 +67,12 @@
             <input id="f-name" class="input" type="text" autocomplete="name" placeholder="e.g. Ama Boateng" />
           </div>
 
+          <div data-modes="signup shop" hidden>
+            <label class="field-label" for="f-shop">Shop name</label>
+            <input id="f-shop" class="input" type="text" autocomplete="organization" maxlength="80" placeholder="e.g. Ama's Boutique" />
+            <p class="field-hint" id="f-shop-hint">This creates your own shop, with its own products, sales and staff. Leave it empty if the shop owner is adding you to their shop.</p>
+          </div>
+
           <div data-modes="signin signup forgot">
             <label class="field-label" for="f-email">Email</label>
             <input id="f-email" class="input" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="you@example.com" />
@@ -89,12 +95,12 @@
             <input id="f-confirm" class="input" type="password" autocomplete="new-password" placeholder="••••••••" />
           </div>
 
-          <button id="auth-submit" type="submit" class="btn btn-primary w-full btn-lg" data-modes="signin signup forgot recover">
+          <button id="auth-submit" type="submit" class="btn btn-primary w-full btn-lg" data-modes="signin signup forgot recover shop">
             <span id="auth-submit-label">Sign in</span>
           </button>
         </form>
 
-        <!-- Shown instead of the form when someone is signed in but can't use the app yet (mode "verify" or "pending"). -->
+        <!-- Shown instead of the form when someone is signed in but can't use the app yet (mode "verify"). -->
         <div id="auth-panel" class="mt-5 space-y-3" hidden>
           <p id="auth-panel-text" class="text-sm text-[var(--text-secondary)]"></p>
           <button id="panel-primary" type="button" class="btn btn-primary w-full btn-lg"></button>

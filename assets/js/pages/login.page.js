@@ -1,13 +1,13 @@
 /**
  * login.page.js — controller for pages/login.html. One card, six modes:
  *   signin  → email + password
- *   signup  → name + email + password (hidden when ALLOW_SIGNUP is false)
+ *   signup  → name + shop name + email + password (hidden when ALLOW_SIGNUP is false)
  *   forgot  → email, sends a reset link
  *   recover → choose a new password (reached by clicking that reset link)
  *   verify  → the email address isn't confirmed yet
- *   pending → confirmed, but the shop owner hasn't approved this email yet
+ *   shop    → confirmed, but not in any shop yet: name a new one (or ask an owner to add this email)
  * The last two exist because getting into a synced shop takes three things:
- * a login, a confirmed email, and the owner's approval (see auth.service.js).
+ * a login, a confirmed email, and a shop to belong to (see auth.service.js).
  *
  * Recovery mode is detected from the URL hash *before* supabase-js loads, because
  * the library consumes the hash (and fires its PASSWORD_RECOVERY event) during
@@ -15,7 +15,7 @@
  */
 import { CLOUD_SYNC, ALLOW_SIGNUP, isSupabaseConfigured } from '../config/supabase.config.js';
 import {
-  getAccessState, refreshAccess, signIn, signUp, sendPasswordReset, updatePassword, resendVerification, signOut, safeNextPath,
+  getAccessState, refreshAccess, createShop, signIn, signUp, sendPasswordReset, updatePassword, resendVerification, signOut, safeNextPath,
 } from '../services/auth.service.js';
 import { getQueryParam, escapeHTML } from '../utils/helpers.js';
 import { getBrandName } from '../services/settings.service.js';
@@ -23,11 +23,11 @@ import { initBrand } from '../utils/brand.js';
 
 const COPY = {
   signin: { title: 'Welcome back', subtitle: 'Sign in to manage your shop.', submit: 'Sign in' },
-  signup: { title: 'Create your account', subtitle: () => `Set up your login for ${getBrandName()}.`, submit: 'Create account' },
+  signup: { title: 'Create your account', subtitle: 'Sign up to run your own shop, or to join one you\'ve been invited to.', submit: 'Create account' },
   forgot: { title: 'Reset your password', subtitle: 'Enter your email and we\'ll send you a link to choose a new one.', submit: 'Send reset link' },
   recover: { title: 'Choose a new password', subtitle: 'Pick something you haven\'t used before.', submit: 'Update password' },
   verify: { title: 'Confirm your email', subtitle: 'One quick step before you can get in.' },
-  pending: { title: 'Waiting for approval', subtitle: 'Your email is confirmed — the shop owner still needs to let you in.' },
+  shop: { title: 'Name your shop', subtitle: 'Your email is confirmed. One last step: set up your own shop.', submit: 'Create my shop' },
 };
 
 const MIN_PASSWORD = 8;
@@ -101,7 +101,7 @@ function routeByAccess(access, { focus = true } = {}) {
   panelEmail = access.user?.email ?? panelEmail;
   if (access.state === 'ok') { redirectIntoApp(); return; }
   if (access.state === 'unverified') { setMode('verify', { focus }); return; }
-  if (access.state === 'not-approved') { setMode('pending', { focus }); return; }
+  if (access.state === 'no-shop') { setMode('shop', { focus }); return; }
   setMode(getQueryParam('mode') === 'signup' && ALLOW_SIGNUP ? 'signup' : 'signin', { focus: false });
 }
 
@@ -111,7 +111,7 @@ function routeByAccess(access, { focus = true } = {}) {
 function setMode(next, { keepAlert = false, focus = true } = {}) {
   mode = next;
   const copy = COPY[mode];
-  const isPanel = mode === 'verify' || mode === 'pending';
+  const isPanel = mode === 'verify';
 
   $('auth-title').textContent = copy.title;
   $('auth-subtitle').textContent = typeof copy.subtitle === 'function' ? copy.subtitle() : copy.subtitle;
@@ -129,6 +129,9 @@ function setMode(next, { keepAlert = false, focus = true } = {}) {
     $('f-password').autocomplete = isNewPassword ? 'new-password' : 'current-password';
     $('f-password-label').textContent = mode === 'recover' ? 'New password' : 'Password';
     $('pw-hint').hidden = !isNewPassword;
+    $('f-shop-hint').innerHTML = mode === 'shop'
+      ? `Joining an existing shop instead? Ask its owner to add <strong>${escapeHTML(panelEmail || 'your email')}</strong> under Employees → <strong>Can sign in</strong>, then choose “Check again” below.`
+      : 'This creates your own shop, with its own products, sales and staff. Leave it empty if a shop owner is adding you to theirs.';
   }
 
   renderSwitchLinks();
@@ -143,10 +146,6 @@ function renderPanel() {
     $('panel-primary').textContent = 'I\'ve confirmed — continue';
     $('panel-secondary').textContent = 'Send the email again';
     $('panel-secondary').hidden = false;
-  } else {
-    $('auth-panel-text').innerHTML = `Ask the shop owner to give <strong>${email}</strong> access (Employees → <strong>Can sign in</strong>). Once they have, press the button below.`;
-    $('panel-primary').textContent = 'Check again';
-    $('panel-secondary').hidden = true;
   }
 }
 
@@ -157,9 +156,14 @@ function renderSwitchLinks() {
   if (mode === 'signin') el.innerHTML = ALLOW_SIGNUP ? `New to ${escapeHTML(getBrandName())}? ${link('signup', 'Create an account')}` : 'Need access? Ask the shop owner to add you.';
   else if (mode === 'signup') el.innerHTML = `Already have an account? ${link('signin', 'Sign in')}`;
   else if (mode === 'forgot') el.innerHTML = link('signin', '← Back to sign in');
+  else if (mode === 'shop') el.innerHTML = `${link('check', 'Check again')} · ${link('signout', 'Sign out')}`;
   else el.innerHTML = '';
 
-  el.querySelectorAll('[data-switch]').forEach((btn) => btn.addEventListener('click', () => setMode(btn.dataset.switch)));
+  el.querySelectorAll('[data-switch]').forEach((btn) => btn.addEventListener('click', () => {
+    if (btn.dataset.switch === 'check') return recheckShop();
+    if (btn.dataset.switch === 'signout') { leaving = true; lastCredentials = null; return signOut(); }
+    return setMode(btn.dataset.switch);
+  }));
 }
 
 function showAlert(variant, message, { html = false } = {}) {
@@ -213,7 +217,7 @@ function bindEvents() {
     routeByAccess(access, { focus: false });
     showAlert('danger', access.state === 'unverified'
       ? 'Not confirmed yet — open the email we sent and click the link first.'
-      : access.state === 'not-approved' ? 'Still waiting — the owner hasn\'t approved this email yet.' : 'Please sign in again.');
+      : 'Please sign in again.');
   }));
   $('panel-secondary').addEventListener('click', () => withPanelBusy(async () => {
     await resendVerification(panelEmail);
@@ -224,6 +228,17 @@ function bindEvents() {
     lastCredentials = null;
     await signOut();
   }));
+}
+
+/** "Check again" on the name-your-shop screen: an owner may have added this email to their shop in the meantime. */
+async function recheckShop() {
+  if (busy) return;
+  hideAlert();
+  try {
+    const access = await refreshAccess();
+    if (access.state === 'ok') { redirectIntoApp(); return; }
+    showAlert('danger', 'You\'re not on a shop\'s staff list yet. Ask the owner to add your email, or name your own shop above.');
+  } catch (err) { showAlert('danger', err.message); }
 }
 
 async function withPanelBusy(fn) {
@@ -237,6 +252,7 @@ function validate() {
   const email = $('f-email').value.trim();
   const password = $('f-password').value;
 
+  if (mode === 'shop') return $('f-shop').value.trim() ? null : 'Give your shop a name.';
   if (mode !== 'recover') {
     if (!email) return 'Enter your email address.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'That email address doesn\'t look right.';
@@ -266,7 +282,9 @@ async function onSubmit(event) {
       routeByAccess(await signIn(email, password));
     } else if (mode === 'signup') {
       lastCredentials = { email: email.trim(), password };
-      routeByAccess(await signUp({ email, password, fullName: $('f-name').value }));
+      routeByAccess(await signUp({ email, password, fullName: $('f-name').value, shopName: $('f-shop').value }));
+    } else if (mode === 'shop') {
+      routeByAccess(await createShop($('f-shop').value));
     } else if (mode === 'forgot') {
       await sendPasswordReset(email);
       showAlert('success', `If an account exists for ${email.trim()}, a reset link is on its way. Check your inbox (and spam).`);

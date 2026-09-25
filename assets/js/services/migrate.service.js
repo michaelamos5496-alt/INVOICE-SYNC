@@ -77,7 +77,7 @@ export async function uploadLocalDataToCloud(onProgress = () => {}) {
     for (let i = 0; i < records.length; i += BATCH) {
       const chunk = records.slice(i, i + BATCH);
       // ignoreDuplicates → "insert unless it's already there": existing shared records are never overwritten.
-      const { data, error } = await client.from(table).upsert(chunk.map(toRow), { onConflict: 'id', ignoreDuplicates: true }).select('id');
+      const { data, error } = await client.from(table).upsert(chunk.map(toRow), { onConflict: 'shop_id,id', ignoreDuplicates: true }).select('id');
       if (error) throw new Error(`Couldn't upload ${name}: ${friendlyDataError(error)}`);
       result.added[name] = (result.added[name] ?? 0) + data.length;
       result.skipped += chunk.length - data.length;
@@ -88,7 +88,7 @@ export async function uploadLocalDataToCloud(onProgress = () => {}) {
   // 3. Store settings — only if the shared database has none yet, and only the owner may write them.
   const localSettings = storage.get(STORAGE_KEYS.SETTINGS);
   if (localSettings && typeof localSettings === 'object') {
-    const { error } = await client.from('config').upsert({ id: 'settings', data: { ...localSettings, createdAt: new Date().toISOString() } }, { onConflict: 'id', ignoreDuplicates: true });
+    const { error } = await client.from('config').upsert({ id: 'settings', data: { ...localSettings, createdAt: new Date().toISOString() } }, { onConflict: 'shop_id,id', ignoreDuplicates: true });
     if (!error) result.added.settings = 1;
     tick('Settings');
   }

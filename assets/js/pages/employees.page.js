@@ -119,7 +119,7 @@ function permissionsListHTML(role) {
 function signInControlHTML(employee) {
   if (!staffAccessSupported()) return '';
   if (!iAmOwner) {
-    return `<p class="text-xs text-[var(--text-muted)]"><i class="fa-solid fa-lock mr-1"></i> Only the shop owner can give someone sign-in access.</p>`;
+    return `<p class="text-xs text-[var(--text-muted)]"><i class="fa-solid fa-lock mr-1"></i> Only the shop owner can give someone sign-in access to this shop.</p>`;
   }
   const allowed = staff.has(emailKey(employee?.email));
   return `
@@ -127,7 +127,7 @@ function signInControlHTML(employee) {
       <input id="f-can-login" type="checkbox" class="checkbox mt-0.5" ${allowed ? 'checked' : ''} />
       <span>
         <span class="block text-sm font-medium">Can sign in to the app</span>
-        <span class="block text-xs text-[var(--text-muted)]">They create their login with this email address and confirm it. Needs an email above.</span>
+        <span class="block text-xs text-[var(--text-muted)]">They sign up with this email address, confirm it, and land in your shop. Needs an email above.</span>
       </span>
     </label>`;
 }
