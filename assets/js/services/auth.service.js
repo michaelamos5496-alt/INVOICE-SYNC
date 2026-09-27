@@ -140,8 +140,9 @@ async function loadMyShop(client) {
     throw error;
   }
   if (!shopId) return null;
-  const { data: row } = await client.from('shops').select('id,name').eq('id', shopId).maybeSingle();
-  return { id: shopId, name: row?.name ?? '' };
+  // Just the id — every page load already waits on this, so it skips the extra round trip to fetch the shop's
+  // name. (Settings already has it as storeName, loaded moments later by initSettings().)
+  return { id: shopId };
 }
 
 /** Creates the signed-in person's own shop and makes them its Shop Owner. Returns the new access state. */

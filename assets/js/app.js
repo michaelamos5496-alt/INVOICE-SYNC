@@ -26,6 +26,13 @@ import { initSettings, onRemoteSettingsChange } from './services/settings.servic
 import { showConnectionProblem, connectionProblemFor } from './components/connection-screen.js';
 
 export async function bootstrapApp() {
+  // These two are plain static-file fetches with nothing to do with who's signed in, so they run
+  // at the same time as the session/settings checks below instead of waiting for them first.
+  const partials = Promise.all([
+    injectPartial('#sidebar-mount', '/components/sidebar.html'),
+    injectPartial('#topbar-mount', '/components/topbar.html'),
+  ]);
+
   const { user } = await requireSession();
   try {
     await initSettings(); // shared store settings (currency, tax, shop name) — no-op unless CLOUD_SYNC
@@ -36,10 +43,7 @@ export async function bootstrapApp() {
   }
   const clearedLegacyDemoData = migrateLegacyAutoSeed();
 
-  await Promise.all([
-    injectPartial('#sidebar-mount', '/components/sidebar.html'),
-    injectPartial('#topbar-mount', '/components/topbar.html'),
-  ]);
+  await partials;
 
   renderSidebar();
   renderSidebarUser(user);

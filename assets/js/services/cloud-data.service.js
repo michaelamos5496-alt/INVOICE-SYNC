@@ -29,7 +29,6 @@ import { getSupabase } from './supabase.service.js';
 import { generateId } from '../utils/ids.js';
 
 const PAGE_SIZE = 1000;              // Supabase returns at most 1000 rows per request
-const REALTIME_WAIT_MS = 5000;       // don't hold up first load forever if live updates can't connect
 const MUTATE_RETRIES = 6;
 const FALLBACK_POLL_MS = 30_000;     // only used while live updates are down
 
@@ -164,12 +163,10 @@ export function createCloudCollection(path, idPrefix, { windowDays = null } = {}
           }
         });
 
-      // Wait (briefly) for the live channel BEFORE loading, so nothing that changes in between is missed.
-      await new Promise((resolve) => {
-        const timer = setTimeout(resolve, REALTIME_WAIT_MS);
-        const check = setInterval(() => { if (live.get(table)) { clearTimeout(timer); clearInterval(check); resolve(); } }, 50);
-        setTimeout(() => clearInterval(check), REALTIME_WAIT_MS + 100);
-      });
+      // The channel's `.on()` handler above is already registered, so nothing that changes from this point on is
+      // missed — the REST load below can run at the same time as the channel connects instead of waiting for it
+      // first. (Waiting here used to add a real delay to every page's first paint for no correctness benefit: if
+      // the connection was slow enough to hit the old timeout, a change in that window could already slip through.)
       await loadAll();
       loaded = true;
       buffered.forEach(applyChange);
