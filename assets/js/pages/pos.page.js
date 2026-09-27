@@ -252,7 +252,7 @@ function openPaymentModal() {
             <p class="text-sm text-[var(--text-secondary)]">Confirm once the mobile money prompt is approved by the customer.</p>
           </div>
           <div data-tab-panel="split" class="hidden pt-4 space-y-3">
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-3 gap-3">
               <div>
                 <label class="field-label">Cash Amount</label>
                 <input id="f-split-cash" type="number" step="0.01" min="0" class="input" value="0" />
@@ -260,6 +260,10 @@ function openPaymentModal() {
               <div>
                 <label class="field-label">Card Amount</label>
                 <input id="f-split-card" type="number" step="0.01" min="0" class="input" value="0" />
+              </div>
+              <div>
+                <label class="field-label">Mobile Money</label>
+                <input id="f-split-mobile" type="number" step="0.01" min="0" class="input" value="0" />
               </div>
             </div>
             <p class="text-sm text-[var(--text-secondary)]">Remaining: <span id="split-remaining" class="font-semibold">${formatCurrency(totals.total)}</span></p>
@@ -283,12 +287,14 @@ function openPaymentModal() {
 
   const splitCash = el.querySelector('#f-split-cash');
   const splitCard = el.querySelector('#f-split-card');
+  const splitMobile = el.querySelector('#f-split-mobile');
   const updateSplitRemaining = () => {
-    const remaining = totals.total - (Number(splitCash.value || 0) + Number(splitCard.value || 0));
+    const remaining = totals.total - (Number(splitCash.value || 0) + Number(splitCard.value || 0) + Number(splitMobile.value || 0));
     el.querySelector('#split-remaining').textContent = formatCurrency(Math.max(0, remaining));
   };
   splitCash.addEventListener('input', updateSplitRemaining);
   splitCard.addEventListener('input', updateSplitRemaining);
+  splitMobile.addEventListener('input', updateSplitRemaining);
 
   el.querySelector('#confirm-payment').addEventListener('click', async () => {
     let payments = null;
@@ -298,8 +304,9 @@ function openPaymentModal() {
     } else if (activeMethod === 'split') {
       const cashAmt = Number(splitCash.value || 0);
       const cardAmt = Number(splitCard.value || 0);
-      if (Math.abs(cashAmt + cardAmt - totals.total) > 0.01) { toast.danger('Split amounts must add up to the total.'); return; }
-      payments = { cash: cashAmt, card: cardAmt };
+      const mobileAmt = Number(splitMobile.value || 0);
+      if (Math.abs(cashAmt + cardAmt + mobileAmt - totals.total) > 0.01) { toast.danger('Split amounts must add up to the total.'); return; }
+      payments = { cash: cashAmt, card: cardAmt, mobile_money: mobileAmt };
     }
 
     try {
