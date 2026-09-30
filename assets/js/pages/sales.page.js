@@ -9,10 +9,12 @@ import { DataTable } from '../components/table.js';
 import { modal } from '../components/modal.js';
 import { formatCurrency, formatDateTime } from '../utils/formatters.js';
 import { escapeHTML } from '../utils/helpers.js';
+import { openCustomReceipt } from './custom-receipt.js';
 
 let customers = [];
 
 export async function initSalesPage() {
+  document.getElementById('custom-receipt-btn').addEventListener('click', openCustomReceipt);
   customers = await api.customers.list();
 
   const table = new DataTable(document.getElementById('sales-table'), {

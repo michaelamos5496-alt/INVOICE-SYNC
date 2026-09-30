@@ -8,6 +8,7 @@ import { getDailyReport } from '../services/reports.service.js';
 import { getBrandName } from '../services/settings.service.js';
 import { formatCurrency, formatDateTime } from '../utils/formatters.js';
 import { escapeHTML, exportToCSV } from '../utils/helpers.js';
+import { htmlToPdfBlob, downloadBlob, sharePdfBlob } from '../utils/pdf.js';
 
 const label = (key) => escapeHTML(String(key).replace(/_/g, ' '));
 const orderNo = (o) => `#${o.id.slice(-6).toUpperCase()}`;
@@ -55,60 +56,25 @@ ${r.orders.map((o) => `<tr><td>${time(o)}</td><td>${orderNo(o)}</td><td>${escape
 </body></html>`;
 }
 
-const PDF_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js';
-let pdfLibPromise;
-function loadPdfLib() {
-  if (window.html2pdf) return Promise.resolve();
-  pdfLibPromise ??= new Promise((resolve, reject) => {
-    const el = document.createElement('script');
-    el.src = PDF_LIB; el.onload = resolve;
-    el.onerror = () => { pdfLibPromise = null; reject(new Error('Could not load the PDF tool — check your connection.')); };
-    document.head.appendChild(el);
-  });
-  return pdfLibPromise;
-}
-
 /** Renders the report to a real PDF Blob. */
 async function makePDF(dateStr) {
-  const [report] = await Promise.all([getDailyReport(dateStr), loadPdfLib()]);
+  const report = await getDailyReport(dateStr);
   const doc = new DOMParser().parseFromString(buildHTML(report), 'text/html');
   doc.querySelectorAll('script').forEach((n) => n.remove());
-  const host = document.createElement('div');
-  host.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;background:#fff';
-  host.innerHTML = `${doc.head.querySelector('style').outerHTML}<div>${doc.body.innerHTML}</div>`;
-  document.body.appendChild(host);
-  try {
-    return await window.html2pdf().set({
-      margin: 10, image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['css', 'legacy'] },
-    }).from(host).outputPdf('blob');
-  } finally { host.remove(); }
+  return htmlToPdfBlob({ styleHTML: doc.head.querySelector('style').outerHTML, bodyHTML: doc.body.innerHTML });
 }
 
 const pdfName = (dateStr) => `daily-report-${dateStr}.pdf`;
 
 export async function downloadDailyPDF(dateStr) {
-  const blob = await makePDF(dateStr);
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = pdfName(dateStr);
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  downloadBlob(await makePDF(dateStr), pdfName(dateStr));
 }
 
 /** Opens the system share sheet (WhatsApp, Mail, Messages/iMessage, AirDrop…) with the PDF attached. */
 export async function shareDailyPDF(dateStr) {
-  const blob = await makePDF(dateStr);
-  const file = new File([blob], pdfName(dateStr), { type: 'application/pdf' });
-  const data = { files: [file], title: `Daily Report ${dateStr}`, text: `${getBrandName()} — daily sales report for ${dateStr}` };
-  if (navigator.canShare?.(data)) {
-    try { await navigator.share(data); } catch (err) { if (err.name !== 'AbortError') throw err; }
-    return 'shared';
-  }
-  await downloadDailyPDF(dateStr); // this browser can't share files — fall back to a download to attach by hand
-  return 'downloaded';
+  return sharePdfBlob(await makePDF(dateStr), pdfName(dateStr), {
+    title: `Daily Report ${dateStr}`, text: `${getBrandName()} — daily sales report for ${dateStr}`,
+  });
 }
 
 export async function downloadDailyCSV(dateStr) {

@@ -82,7 +82,10 @@
         <div id="pos-cart" class="card p-5 lg:sticky lg:top-20 flex flex-col lg:max-h-[calc(100vh-6rem)] scroll-mt-20">
           <div class="flex items-center justify-between mb-3">
             <h2 class="font-display font-semibold">Current Sale</h2>
-            <button id="clear-cart-btn" class="btn btn-ghost btn-sm" title="Clear cart"><i class="fa-solid fa-broom"></i></button>
+            <div class="flex items-center gap-1">
+              <button id="custom-receipt-btn" type="button" class="btn btn-ghost btn-sm" title="Make a custom receipt (not a sale)"><i class="fa-solid fa-receipt"></i> <span class="text-xs">Custom receipt</span></button>
+              <button id="clear-cart-btn" class="btn btn-ghost btn-sm" title="Clear cart"><i class="fa-solid fa-broom"></i></button>
+            </div>
           </div>
 
           <div class="mb-3">

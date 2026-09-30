@@ -18,6 +18,7 @@ import { initTabs } from '../components/tabs.js';
 import { renderEmptyState } from '../components/empty-state.js';
 import { formatCurrency, formatDateTime } from '../utils/formatters.js';
 import { debounce, escapeHTML } from '../utils/helpers.js';
+import { openCustomReceipt } from './custom-receipt.js';
 
 let products = [];
 let categories = [];
@@ -79,6 +80,7 @@ export async function initPOSPage() {
   new IntersectionObserver(([entry]) => {
     document.getElementById('pos-mobile-bar').classList.toggle('invisible', entry.isIntersecting);
   }).observe(document.getElementById('charge-btn'));
+  document.getElementById('custom-receipt-btn').addEventListener('click', openCustomReceipt);
   document.getElementById('clear-cart-btn').addEventListener('click', () => {
     if (!cart.length) return;
     cart = [];

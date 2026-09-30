@@ -49,9 +49,12 @@
     <div id="topbar-mount"></div>
 
     <main id="main-content" class="flex-1 p-4 sm:p-6 lg:p-8 route-enter space-y-6">
-      <div>
-        <h1 class="font-display text-2xl font-bold">Sales</h1>
-        <p class="text-sm text-[var(--text-secondary)] mt-1">Physical shop sales history — every one of these came through the POS.</p>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 class="font-display text-2xl font-bold">Sales</h1>
+          <p class="text-sm text-[var(--text-secondary)] mt-1">Physical shop sales history — every one of these came through the POS.</p>
+        </div>
+        <button id="custom-receipt-btn" type="button" class="btn btn-secondary btn-sm self-start"><i class="fa-solid fa-receipt"></i> Custom Receipt</button>
       </div>
 
       <div class="card p-4">
