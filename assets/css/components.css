@@ -504,3 +504,6 @@ html.modal-open { overflow: hidden; }
 }
 .input[aria-invalid="true"] { border-color: var(--color-danger-500); }
 .input[aria-invalid="true"]:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger-500) 18%, transparent); }
+
+/* Compact inputs for spreadsheet-style tables (variant grid). */
+.input-sm { padding-top: 0.3rem; padding-bottom: 0.3rem; font-size: 0.8125rem; min-height: 0; }

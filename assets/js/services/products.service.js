@@ -24,27 +24,81 @@ export function generateBarcode() {
 
 export { generateSKU };
 
-/** A variant's display name — its color and/or size, e.g. "Red / M". Empty when it has neither. */
+export const MAX_OPTIONS = 3;
+export const MAX_VARIANTS = 100;
+
+/** A variant's display name — its option values joined like Shopify does, e.g. "Red / M". */
 export function variantLabel(variant) {
-  return [variant?.color, variant?.size].map((part) => String(part ?? '').trim()).filter(Boolean).join(' / ');
+  return variant?.title || [variant?.option1, variant?.option2, variant?.option3].map((v) => String(v ?? '').trim()).filter(Boolean).join(' / ');
+}
+
+/** Cleans option definitions: trims names, drops empty/duplicate values and options with no values. */
+export function normalizeOptions(options = []) {
+  return options
+    .map((o) => ({ name: String(o.name ?? '').trim(), values: [...new Set((o.values ?? []).map((v) => String(v).trim()).filter(Boolean))] }))
+    .filter((o) => o.name && o.values.length)
+    .slice(0, MAX_OPTIONS);
 }
 
 /**
- * Cleans up a product's variants for saving: trims text and coerces the
- * numbers. Every variant must be named (a color, a size, or both) —
- * otherwise nothing tells you which one is which later, in the product
- * form, on inventory screens, or in reports — so an unnamed one throws
- * instead of being saved.
+ * Every combination of the options' values, in Shopify's order (the first
+ * option varies slowest). Rows that already exist (matched by their option
+ * values) keep their price, stock, SKU and barcode; new combinations start
+ * with the product's price and no stock.
  */
-export function normalizeVariants(variants = []) {
-  return variants.map((variant, index) => {
-    if (!variantLabel(variant)) throw new Error(`Variant ${index + 1} needs a name — enter a color or a size.`);
+export function generateVariants(options, existing = [], defaultPrice = 0) {
+  const opts = normalizeOptions(options);
+  if (!opts.length) return [];
+  const combos = opts.reduce((acc, o) => acc.flatMap((c) => o.values.map((v) => [...c, v])), [[]]);
+  const key = (vals) => vals.join('\u0001');
+  const byKey = new Map(existing.map((v) => [key([v.option1, v.option2, v.option3].filter((x) => x != null && x !== '')), v]));
+  return combos.map((vals) => {
+    const old = byKey.get(key(vals));
     return {
-      color: String(variant.color ?? '').trim(),
-      size: String(variant.size ?? '').trim(),
-      skuSuffix: String(variant.skuSuffix ?? '').trim(),
-      stock: Number(variant.stock) || 0,
-      priceAdjustment: Number(variant.priceAdjustment) || 0,
+      title: vals.join(' / '), option1: vals[0], option2: vals[1] ?? null, option3: vals[2] ?? null,
+      price: old?.price ?? defaultPrice, sku: old?.sku ?? '', barcode: old?.barcode ?? '', stock: old?.stock ?? 0,
+    };
+  });
+}
+
+/**
+ * Upgrades variants saved in the old color/size format to Shopify-style
+ * options + variants (Color and/or Size options; price = product price +
+ * the old price change; SKU = product SKU + the old suffix).
+ */
+export function upgradeLegacyVariants(product) {
+  const variants = product?.variants ?? [];
+  if (!variants.length || product.options?.length || variants.every((v) => v.option1 != null)) {
+    return { options: product?.options ?? [], variants };
+  }
+  const useColor = variants.some((v) => String(v.color ?? '').trim());
+  const useSize = variants.some((v) => String(v.size ?? '').trim());
+  const names = [useColor && 'Color', useSize && 'Size'].filter(Boolean);
+  const upgraded = variants.map((v, i) => {
+    const vals = [useColor && String(v.color ?? '').trim(), useSize && String(v.size ?? '').trim()].filter((x) => x !== false);
+    const filled = vals.map((x, j) => x || (names.length > 1 ? '—' : `Variant ${i + 1}`)).map((x) => x);
+    return {
+      title: filled.join(' / '), option1: filled[0], option2: filled[1] ?? null, option3: null,
+      price: (product.sellingPrice ?? 0) + (Number(v.priceAdjustment) || 0),
+      sku: v.skuSuffix ? `${product.sku ?? ''}${v.skuSuffix}` : '', barcode: '', stock: Number(v.stock) || 0,
+    };
+  });
+  const options = names.map((name, i) => ({ name, values: [...new Set(upgraded.map((v) => v[`option${i + 1}`]))] }));
+  return { options, variants: upgraded };
+}
+
+/** Cleans a product's variants for saving: trims text and coerces numbers. */
+export function normalizeVariants(variants = []) {
+  if (variants.length > MAX_VARIANTS) throw new Error(`A product can have up to ${MAX_VARIANTS} variants — remove some option values.`);
+  return variants.map((v) => {
+    if (!variantLabel(v)) throw new Error('Every variant needs option values.');
+    return {
+      title: variantLabel(v),
+      option1: v.option1 ?? null, option2: v.option2 ?? null, option3: v.option3 ?? null,
+      price: Math.max(0, Number(v.price) || 0),
+      sku: String(v.sku ?? '').trim(),
+      barcode: String(v.barcode ?? '').trim(),
+      stock: Math.max(0, Math.floor(Number(v.stock) || 0)),
     };
   });
 }
@@ -64,6 +118,7 @@ export async function getProduct(id) {
  */
 export async function createProduct(formData, actor = 'system') {
   const { stockQuantity = 0, ...rest } = formData;
+  if (rest.options) rest.options = normalizeOptions(rest.options);
   if (rest.variants) rest.variants = normalizeVariants(rest.variants);
   const product = await api.products.create({
     ...rest,
@@ -97,6 +152,7 @@ export async function updateProduct(id, formData, actor = 'system') {
   if (!current) throw new Error(`Product ${id} not found`);
 
   const { stockQuantity, ...rest } = formData;
+  if (rest.options) rest.options = normalizeOptions(rest.options);
   if (rest.variants) rest.variants = normalizeVariants(rest.variants);
   await api.products.update(id, rest);
 
@@ -126,10 +182,12 @@ export async function duplicateProduct(id, actor = 'system') {
   const { id: _id, createdAt, updatedAt, ...rest } = original;
   // Each product owns its photos, so the copy gets its own — deleting one later must not break the other.
   const images = (await Promise.all((original.images ?? []).map(cloneImage))).filter(Boolean);
-  // Variants saved before names were required get a placeholder name so the copy can be saved.
-  const variants = (original.variants ?? []).map((v, i) => (variantLabel(v) ? v : { ...v, color: `Variant ${i + 1}` }));
+  // Variant SKUs and barcodes are unique per item, so the copy starts without them.
+  const { options, variants: upgraded } = upgradeLegacyVariants(original);
+  const variants = upgraded.map((v) => ({ ...v, sku: '', barcode: '' }));
   return createProduct({
     ...rest,
+    options,
     variants,
     images,
     name: `${original.name} (Copy)`,

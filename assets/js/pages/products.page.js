@@ -14,7 +14,7 @@ import { getActorName } from '../services/auth.service.js';
 import { api } from '../services/api.service.js';
 import {
   listProducts, createProduct, updateProduct, deleteProduct, duplicateProduct,
-  generateBarcode, generateSKU, variantLabel,
+  generateBarcode, generateSKU, variantLabel, generateVariants, upgradeLegacyVariants, MAX_OPTIONS, MAX_VARIANTS,
 } from '../services/products.service.js';
 import { DataTable } from '../components/table.js';
 import { modal } from '../components/modal.js';
@@ -41,6 +41,8 @@ const STOCK_BADGE = {
 let table;
 let lookups = { categories: [], brands: [], suppliers: [], warehouses: [] };
 let variantState = [];
+let selectedVariants = new Set(); // indexes ticked for bulk edit
+let optionsState = []; // [{ name, values[], editing }] — Shopify-style options; variantState is generated from them
 let editingProduct = null; // the product open in the form (null when adding), so stock can follow its variants
 
 const variantUnits = (variants) => variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
@@ -206,79 +208,205 @@ function selectOptions(list, selectedId) {
     list.map((item) => `<option value="${item.id}" ${item.id === selectedId ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('');
 }
 
-/** Heading shown above each variant card — the variant's name, or a prompt while it has none. */
-function variantTitleHTML(variant, index) {
-  const name = variantLabel(variant);
-  return `Variant ${index + 1} · ${name ? `<span class="font-medium">${escapeHTML(name)}</span>` : '<span class="font-normal text-[var(--text-muted)]">needs a name</span>'}`;
-}
+const SUGGESTED_OPTIONS = ['Size', 'Color', 'Material', 'Style'];
 
-function renderVariantRows() {
-  const container = document.getElementById('variant-rows');
-  if (!container) return;
-
-  // Every input gets a real visible <label> (placeholders vanish once you type, and a
-  // bare "+/- price" doesn't say what it changes). Two columns on phones, six from sm up.
-  const field = (i, key, label, { span = '', type = 'text', value, placeholder = '', min = '', hint = '' } = {}) => `
-    <div class="${span}">
-      <label class="field-label" for="variant-${i}-${key}">${label}</label>
-      <input id="variant-${i}-${key}" class="input" type="${type}" value="${escapeHTML(value ?? '')}" placeholder="${placeholder}" ${min !== '' ? `min="${min}"` : ''} ${type === 'number' ? 'step="any" inputmode="decimal"' : ''} data-variant-field="${key}" ${hint ? `aria-describedby="variant-${i}-${key}-hint"` : ''} />
-      ${hint ? `<p id="variant-${i}-${key}-hint" class="field-hint">${hint}</p>` : ''}
-    </div>`;
-
-  container.innerHTML = variantState.length
-    ? variantState.map((v, i) => `
-        <fieldset class="variant-card" data-variant-row="${i}">
-          <legend class="sr-only">Variant ${i + 1}</legend>
-          <div class="flex items-center justify-between gap-2 mb-3">
-            <p class="text-sm font-semibold" data-variant-title>${variantTitleHTML(v, i)}</p>
-            <button type="button" class="btn btn-ghost btn-sm" data-remove-variant="${i}" aria-label="Remove variant ${i + 1}"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Remove</button>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-6 gap-3">
-            ${field(i, 'color', 'Color', { span: 'sm:col-span-2', value: v.color, placeholder: 'e.g. Red' })}
-            ${field(i, 'size', 'Size', { span: 'sm:col-span-1', value: v.size, placeholder: 'e.g. M' })}
-            ${field(i, 'skuSuffix', 'SKU suffix', { span: 'sm:col-span-1', value: v.skuSuffix, placeholder: '-RED-M' })}
-            ${field(i, 'stock', 'Stock', { span: 'sm:col-span-1', type: 'number', value: v.stock ?? 0, min: 0 })}
-            ${field(i, 'priceAdjustment', 'Price change', { span: 'col-span-2 sm:col-span-1', type: 'number', value: v.priceAdjustment ?? 0, hint: 'Added to the price. Use − to reduce.' })}
-          </div>
-          <p class="field-error hidden" data-variant-error role="alert">Give this variant a color or a size so you can tell it apart.</p>
-        </fieldset>`).join('')
-    : `<p class="text-sm text-[var(--text-muted)]">No variants yet. Add one for products sold by color/size (e.g. apparel).</p>`;
-
-  container.querySelectorAll('[data-variant-field]').forEach((input) => {
-    const row = input.closest('[data-variant-row]');
-    const idx = Number(row.dataset.variantRow);
-    input.addEventListener('input', () => {
-      const key = input.dataset.variantField;
-      variantState[idx][key] = ['stock', 'priceAdjustment'].includes(key) ? Number(input.value) : input.value;
-      if (key === 'stock') syncStockField();
-      if (key === 'color' || key === 'size') {
-        // Update the heading in place (a full re-render would drop focus mid-typing) and clear any error.
-        row.querySelector('[data-variant-title]').innerHTML = variantTitleHTML(variantState[idx], idx);
-        if (variantLabel(variantState[idx])) clearVariantError(row);
-      }
-    });
-  });
-  container.querySelectorAll('[data-remove-variant]').forEach((btn) => {
-    btn.addEventListener('click', () => { variantState.splice(Number(btn.dataset.removeVariant), 1); renderVariantRows(); });
-  });
+/** Rebuilds the variant list from the options, keeping what was already typed for combinations that still exist. */
+function regenerateVariants() {
+  const price = Number(document.getElementById('f-price')?.value) || 0;
+  variantState = generateVariants(optionsState.map((o) => ({ name: o.name, values: o.values })), variantState, price);
+  selectedVariants = new Set();
   syncStockField();
 }
 
-function clearVariantError(row) {
-  row.querySelectorAll('[data-variant-field="color"], [data-variant-field="size"]').forEach((input) => input.removeAttribute('aria-invalid'));
-  row.querySelector('[data-variant-error]')?.classList.add('hidden');
+function renderVariantEditor() {
+  renderOptionsEditor();
+  renderVariantTable();
 }
 
-/** Sends the user to the first variant with no name: opens the tab, marks the fields, and focuses one. */
-function flagUnnamedVariant(modalEl, index) {
-  modalEl.querySelector('[data-tab="variants"]')?.click();
-  const row = modalEl.querySelector(`[data-variant-row="${index}"]`);
-  if (!row) return;
-  row.querySelectorAll('[data-variant-field="color"], [data-variant-field="size"]').forEach((input) => input.setAttribute('aria-invalid', 'true'));
-  row.querySelector('[data-variant-error]')?.classList.remove('hidden');
-  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  row.querySelector('[data-variant-field="color"]')?.focus({ preventScroll: true });
-  toast.danger(`Variant ${index + 1} needs a name — enter a color or a size.`);
+function renderOptionsEditor() {
+  const box = document.getElementById('variant-options');
+  if (!box) return;
+  const used = new Set(optionsState.map((o) => o.name.toLowerCase()));
+  box.innerHTML = optionsState.map((o, i) => o.editing ? `
+      <fieldset class="variant-card space-y-3" data-option="${i}">
+        <legend class="sr-only">Option ${i + 1}</legend>
+        <div>
+          <label class="field-label" for="opt-${i}-name">Option name</label>
+          <input id="opt-${i}-name" class="input" list="opt-suggest" value="${escapeHTML(o.name)}" placeholder="e.g. Size" data-opt-name />
+        </div>
+        <div>
+          <label class="field-label" for="opt-${i}-value">Option values</label>
+          <div class="flex flex-wrap gap-1.5 mb-2">
+            ${o.values.map((v, j) => `<span class="badge badge-neutral gap-1">${escapeHTML(v)} <button type="button" class="opacity-60 hover:opacity-100" data-del-value="${i}:${j}" aria-label="Remove ${escapeHTML(v)}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></span>`).join('')}
+          </div>
+          <input id="opt-${i}-value" class="input" placeholder="Type a value, press Enter or comma to add" data-opt-value />
+        </div>
+        <div class="flex items-center justify-between">
+          <button type="button" class="btn btn-ghost btn-sm" data-del-option="${i}"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Delete</button>
+          <button type="button" class="btn btn-primary btn-sm" data-done-option="${i}">Done</button>
+        </div>
+      </fieldset>` : `
+      <div class="variant-card flex items-center justify-between gap-3">
+        <button type="button" class="text-left flex-1 min-w-0" data-edit-option="${i}">
+          <p class="text-sm font-semibold">${escapeHTML(o.name)}</p>
+          <div class="flex flex-wrap gap-1.5 mt-1.5">${o.values.map((v) => `<span class="badge badge-neutral">${escapeHTML(v)}</span>`).join('')}</div>
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" data-edit-option="${i}">Edit</button>
+      </div>`).join('') + `
+    <datalist id="opt-suggest">${SUGGESTED_OPTIONS.filter((n) => !used.has(n.toLowerCase())).map((n) => `<option value="${n}"></option>`).join('')}</datalist>`;
+
+  const addBtn = document.getElementById('add-option');
+  addBtn.hidden = optionsState.length >= MAX_OPTIONS;
+  addBtn.disabled = optionsState.some((o) => o.editing);
+
+  const addValues = (i, raw) => {
+    const o = optionsState[i];
+    raw.split(',').map((v) => v.trim()).filter(Boolean).forEach((v) => {
+      if (!o.values.some((x) => x.toLowerCase() === v.toLowerCase())) o.values.push(v);
+    });
+    renderOptionsEditor();
+    document.getElementById(`opt-${i}-value`)?.focus();
+    regenerateVariants(); renderVariantTable();
+  };
+  box.querySelectorAll('[data-opt-name]').forEach((input) => {
+    input.addEventListener('input', () => { optionsState[Number(input.closest('[data-option]').dataset.option)].name = input.value; });
+  });
+  box.querySelectorAll('[data-opt-value]').forEach((input) => {
+    const i = Number(input.closest('[data-option]').dataset.option);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); if (input.value.trim()) addValues(i, input.value); }
+      else if (e.key === 'Backspace' && !input.value && optionsState[i].values.length) { optionsState[i].values.pop(); renderOptionsEditor(); regenerateVariants(); renderVariantTable(); document.getElementById(`opt-${i}-value`)?.focus(); }
+    });
+    input.addEventListener('blur', () => { if (input.value.trim()) addValues(i, input.value); });
+  });
+  box.querySelectorAll('[data-del-value]').forEach((btn) => btn.addEventListener('click', () => {
+    const [i, j] = btn.dataset.delValue.split(':').map(Number);
+    optionsState[i].values.splice(j, 1);
+    renderOptionsEditor(); regenerateVariants(); renderVariantTable();
+  }));
+  box.querySelectorAll('[data-edit-option]').forEach((btn) => btn.addEventListener('click', () => {
+    optionsState.forEach((o) => { o.editing = false; });
+    optionsState[Number(btn.dataset.editOption)].editing = true;
+    renderOptionsEditor();
+  }));
+  box.querySelectorAll('[data-del-option]').forEach((btn) => btn.addEventListener('click', () => {
+    optionsState.splice(Number(btn.dataset.delOption), 1);
+    renderOptionsEditor(); regenerateVariants(); renderVariantTable();
+  }));
+  box.querySelectorAll('[data-done-option]').forEach((btn) => btn.addEventListener('click', () => {
+    const i = Number(btn.dataset.doneOption);
+    const o = optionsState[i];
+    const pending = document.getElementById(`opt-${i}-value`)?.value.trim();
+    if (pending) pending.split(',').map((v) => v.trim()).filter(Boolean).forEach((v) => { if (!o.values.includes(v)) o.values.push(v); });
+    o.name = o.name.trim();
+    if (!o.name) { toast.danger('Give this option a name, like Size or Color.'); return; }
+    if (optionsState.some((x, k) => k !== i && x.name.toLowerCase() === o.name.toLowerCase())) { toast.danger('Two options can\'t have the same name.'); return; }
+    if (!o.values.length) { toast.danger('Add at least one value.'); return; }
+    o.editing = false;
+    regenerateVariants();
+    if (variantState.length > MAX_VARIANTS) { toast.danger(`That makes ${variantState.length} variants — the limit is ${MAX_VARIANTS}. Remove some values.`); o.editing = true; }
+    renderVariantEditor();
+  }));
+}
+
+function renderVariantTable() {
+  const container = document.getElementById('variant-rows');
+  if (!container) return;
+  if (!variantState.length) {
+    container.innerHTML = '<p class="text-sm text-[var(--text-muted)]">Add options like size or color and every combination shows up here, each with its own price, stock, SKU and barcode.</p>';
+    syncStockField();
+    return;
+  }
+  const cell = (i, key, { type = 'text', min = '', label, cls = '' } = {}) =>
+    `<input class="input input-sm ${cls}" type="${type}" ${type === 'number' ? `step="any" inputmode="decimal" min="${min}"` : ''} value="${escapeHTML(variantState[i][key] ?? '')}" data-vfield="${key}" data-vidx="${i}" aria-label="${label} for ${escapeHTML(variantLabel(variantState[i]))}" />`;
+
+  // Like Shopify, group by the first option when there are several options, with a total per group.
+  const grouped = optionsState.length > 1;
+  const rows = [];
+  let lastGroup;
+  variantState.forEach((v, i) => {
+    if (grouped && v.option1 !== lastGroup) {
+      lastGroup = v.option1;
+      const groupStock = variantState.filter((x) => x.option1 === v.option1).reduce((s, x) => s + (Number(x.stock) || 0), 0);
+      rows.push(`<tr class="bg-[var(--surface-sunken)]"><td colspan="6" class="font-semibold text-sm px-3 py-2">${escapeHTML(v.option1)} <span class="font-normal text-[var(--text-muted)]">· ${variantState.filter((x) => x.option1 === v.option1).length} variants · ${groupStock} in stock</span></td></tr>`);
+    }
+    const name = grouped ? [v.option2, v.option3].filter(Boolean).join(' / ') : v.title;
+    rows.push(`<tr>
+      <td class="pl-3 py-2 w-8"><input type="checkbox" data-vselect="${i}" ${selectedVariants.has(i) ? 'checked' : ''} aria-label="Select ${escapeHTML(v.title)}" /></td>
+      <td class="px-3 py-2 text-sm font-medium whitespace-nowrap">${escapeHTML(name)}</td>
+      <td class="px-2 py-1.5 w-28">${cell(i, 'price', { type: 'number', min: 0, label: 'Price' })}</td>
+      <td class="px-2 py-1.5 w-24">${cell(i, 'stock', { type: 'number', min: 0, label: 'Quantity' })}</td>
+      <td class="px-2 py-1.5 w-40">${cell(i, 'sku', { label: 'SKU', cls: 'font-mono' })}</td>
+      <td class="px-2 py-1.5 w-44">${cell(i, 'barcode', { label: 'Barcode', cls: 'font-mono' })}</td>
+    </tr>`);
+  });
+
+  const target = selectedVariants.size ? `${selectedVariants.size} selected` : `all ${variantState.length}`;
+  container.innerHTML = `
+    <div class="flex flex-wrap items-end gap-2 mb-2">
+      <p class="text-sm font-semibold mr-auto">${variantState.length} variant${variantState.length === 1 ? '' : 's'}</p>
+      <div class="flex flex-wrap items-end gap-2">
+        <div><label class="field-label" for="bulk-field">Bulk edit · ${target}</label>
+          <select id="bulk-field" class="input input-sm">
+            <option value="price">Set price</option>
+            <option value="stock">Set quantity</option>
+            <option value="addStock">Add / remove quantity</option>
+            <option value="priceChange">Change price by %</option>
+            <option value="sku">Set SKU prefix</option>
+          </select></div>
+        <input id="bulk-value" class="input input-sm w-28" inputmode="decimal" placeholder="Value" aria-label="Bulk edit value" />
+        <button type="button" class="btn btn-secondary btn-sm" id="bulk-apply">Apply</button>
+      </div>
+    </div>
+    <div class="overflow-x-auto border rounded-[var(--radius-md)]" style="border-color: var(--border-subtle)">
+      <table class="w-full text-left">
+        <thead><tr class="text-xs uppercase text-[var(--text-muted)]"><th class="pl-3 py-2 w-8"><input type="checkbox" id="vselect-all" aria-label="Select all variants" ${selectedVariants.size === variantState.length ? 'checked' : ''} /></th><th class="px-3 py-2">Variant</th><th class="px-2 py-2">Price</th><th class="px-2 py-2">Quantity</th><th class="px-2 py-2">SKU</th><th class="px-2 py-2">Barcode</th></tr></thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>
+    </div>`;
+
+  container.querySelectorAll('[data-vfield]').forEach((input) => {
+    input.addEventListener('input', () => {
+      const key = input.dataset.vfield;
+      variantState[Number(input.dataset.vidx)][key] = ['price', 'stock'].includes(key) ? Number(input.value) : input.value;
+      if (key === 'stock') syncStockField();
+    });
+    if (input.dataset.vfield === 'stock') input.addEventListener('change', renderVariantTable); // refresh the group totals
+    // Spreadsheet feel: Enter moves to the same column in the next variant.
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      container.querySelector(`[data-vfield="${input.dataset.vfield}"][data-vidx="${Number(input.dataset.vidx) + 1}"]`)?.focus();
+    });
+  });
+  container.querySelectorAll('[data-vselect]').forEach((box) => box.addEventListener('change', () => {
+    const i = Number(box.dataset.vselect);
+    if (box.checked) selectedVariants.add(i); else selectedVariants.delete(i);
+    renderVariantTable();
+  }));
+  container.querySelector('#vselect-all').addEventListener('change', (e) => {
+    selectedVariants = e.target.checked ? new Set(variantState.map((_, i) => i)) : new Set();
+    renderVariantTable();
+  });
+  container.querySelector('#bulk-apply').addEventListener('click', () => {
+    const field = container.querySelector('#bulk-field').value;
+    const raw = container.querySelector('#bulk-value').value.trim();
+    const num = Number(raw);
+    if (raw === '' || (field !== 'sku' && Number.isNaN(num))) { toast.danger('Enter a value to apply.'); return; }
+    if (['price', 'stock'].includes(field) && num < 0) { toast.danger('That can\'t be negative.'); return; }
+    const idxs = selectedVariants.size ? [...selectedVariants] : variantState.map((_, i) => i);
+    for (const i of idxs) {
+      const v = variantState[i];
+      if (field === 'price') v.price = num;
+      else if (field === 'stock') v.stock = Math.floor(num);
+      else if (field === 'addStock') v.stock = Math.max(0, (Number(v.stock) || 0) + Math.floor(num));
+      else if (field === 'priceChange') v.price = Math.max(0, Number(((Number(v.price) || 0) * (1 + num / 100)).toFixed(2)));
+      else if (field === 'sku') v.sku = `${raw}-${[v.option1, v.option2, v.option3].filter(Boolean).join('-').replace(/[^A-Za-z0-9]+/g, '').toUpperCase()}`;
+    }
+    toast.success(`Updated ${idxs.length} variant${idxs.length === 1 ? '' : 's'}.`);
+    renderVariantTable();
+  });
+  syncStockField();
 }
 
 const MAX_IMAGES = 6;
@@ -494,9 +622,10 @@ function buildFormHTML(product) {
       </div>
 
       <div data-tab-panel="variants" class="hidden space-y-3">
-        <p class="text-sm text-[var(--text-secondary)]">Name each variant by its color, its size, or both — for example <em>Red / M</em>. Stock and price change are per variant.</p>
-        <div id="variant-rows" class="space-y-3"></div>
-        <button type="button" id="add-variant" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Add Variant</button>
+        <p class="text-sm text-[var(--text-secondary)]">Does this product come in different sizes, colors or materials? Add up to ${MAX_OPTIONS} options — every combination becomes a variant with its own price, stock, SKU and barcode.</p>
+        <div id="variant-options" class="space-y-3"></div>
+        <button type="button" id="add-option" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Add option like size or color</button>
+        <div id="variant-rows"></div>
       </div>
 
       <div data-tab-panel="images" class="hidden space-y-4">
@@ -530,7 +659,9 @@ function buildFormHTML(product) {
 
 export function openProductModal(product = null) {
   imageState.forEach(revokePreview);
-  variantState = product?.variants ? structuredClone(product.variants) : [];
+  const upgraded = upgradeLegacyVariants(product);
+  variantState = structuredClone(upgraded.variants);
+  optionsState = structuredClone(upgraded.options).map((o) => ({ ...o, editing: false }));
   editingProduct = product;
   imageState = product?.images ? structuredClone(product.images) : [];
 
@@ -545,17 +676,22 @@ export function openProductModal(product = null) {
   });
 
   initTabs(el.querySelector('#product-tabs'));
-  renderVariantRows();
+  renderVariantEditor();
   renderImageGrid();
 
   el.querySelector('#f-sku-gen').addEventListener('click', () => { el.querySelector('#f-sku').value = generateSKU('SKU'); });
   el.querySelector('#f-barcode-gen').addEventListener('click', () => { el.querySelector('#f-barcode').value = generateBarcode(); });
-  el.querySelector('#add-variant').addEventListener('click', () => {
-    variantState.push({ color: '', size: '', skuSuffix: '', stock: 0, priceAdjustment: 0 });
-    renderVariantRows();
-    const last = el.querySelector(`[data-variant-row="${variantState.length - 1}"]`);
-    last?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    last?.querySelector('[data-variant-field="color"]')?.focus({ preventScroll: true });
+  el.querySelector('#add-option').addEventListener('click', () => {
+    optionsState.forEach((o) => { o.editing = false; });
+    optionsState.push({ name: '', values: [], editing: true });
+    renderOptionsEditor();
+    el.querySelector(`#opt-${optionsState.length - 1}-name`)?.focus();
+  });
+  // A new product's variants start at the product's price, so keep untouched ones in step with it.
+  el.querySelector('#f-price').addEventListener('change', () => {
+    const price = Number(el.querySelector('#f-price').value) || 0;
+    if (!variantState.length) return;
+    if (!product) { variantState.forEach((v) => { v.price = price; }); renderVariantTable(); }
   });
   // ---- photos ----
   const fileInput = el.querySelector('#f-image-files');
@@ -591,8 +727,11 @@ export function openProductModal(product = null) {
       toast.danger('Product name, SKU and selling price are required.');
       return;
     }
-    const unnamedAt = variantState.findIndex((variant) => !variantLabel(variant));
-    if (unnamedAt !== -1) { flagUnnamedVariant(el, unnamedAt); return; }
+    if (optionsState.some((o) => o.editing)) {
+      el.querySelector('[data-tab="variants"]')?.click();
+      toast.danger('Finish the option you are editing — press Done on the Variants tab.');
+      return;
+    }
     if (imageState.some((entry) => entry.processing)) {
       toast.info('Your photos are still being processed — try again in a moment.');
       return;
@@ -617,6 +756,7 @@ export function openProductModal(product = null) {
       stockQuantity: stockFromVariants(Number(el.querySelector('#f-stock').value) || 0),
       minStock: Number(el.querySelector('#f-min-stock').value) || 0,
       maxStock: Number(el.querySelector('#f-max-stock').value) || 0,
+      options: optionsState.map(({ name, values }) => ({ name, values })),
       variants: variantState,
     };
 

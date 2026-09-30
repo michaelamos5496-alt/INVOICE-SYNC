@@ -17,7 +17,8 @@ import { modal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { initDropdown } from '../components/dropdown.js';
 import { formatDateTime } from '../utils/formatters.js';
-import { debounce, exportToCSV, parseCSV, generateSKU, escapeHTML } from '../utils/helpers.js';
+import { buildShopifyCSV, downloadCSV, isShopifyCSV, importShopifyRows } from '../services/product-csv.service.js';
+import { debounce, parseCSV, generateSKU, escapeHTML } from '../utils/helpers.js';
 
 const STOCK_BADGE = {
   in_stock: { cls: 'badge-success', label: 'In Stock' },
@@ -63,13 +64,8 @@ export async function initInventoryPage() {
   });
 
   document.getElementById('export-csv').addEventListener('click', async () => {
-    const products = await api.products.list();
-    exportToCSV(products.map((p) => ({
-      name: p.name, sku: p.sku, barcode: p.barcode ?? '', category: lookupName(lookups.categories, p.categoryId),
-      costPrice: p.costPrice, sellingPrice: p.sellingPrice, stockQuantity: p.stockQuantity,
-      minStock: p.minStock, maxStock: p.maxStock, status: p.status,
-    })), 'inventory-export.csv');
-    toast.success('Inventory exported.');
+    downloadCSV(await buildShopifyCSV(), 'products-export.csv');
+    toast.success('Exported in Shopify format — opens in Excel or Google Sheets.');
   });
 
   document.getElementById('import-csv-input').addEventListener('change', handleImportFile);
@@ -248,6 +244,15 @@ async function handleImportFile(e) {
   const text = await file.text();
   const rows = parseCSV(text);
   if (!rows.length) { toast.danger('That CSV had no rows to import.'); return; }
+
+  if (isShopifyCSV(rows)) {
+    const { created, updated, skipped } = await importShopifyRows(rows, 'Bulk Import');
+    await api.activityLog.create({ actor: getActorName(), action: 'Bulk imported products (Shopify format)', target: `${created} created, ${updated} updated` });
+    toast.success(`Import complete: ${created} product(s) created, ${updated} updated${skipped.length ? `, ${skipped.length} skipped` : ''}.`);
+    if (skipped.length) toast.warning(`Skipped: ${skipped.slice(0, 3).join('; ')}${skipped.length > 3 ? '…' : ''}`);
+    refreshTable();
+    return;
+  }
 
   const [products, categories] = await Promise.all([api.products.list(), api.categories.list()]);
   const bySku = new Map(products.map((p) => [p.sku, p]));
