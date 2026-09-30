@@ -51,7 +51,7 @@ export function initGlobalSearch() {
     const lower = term.toLowerCase();
 
     const navMatches = NAV_ITEMS_FLAT
-      .filter((item) => item.label.toLowerCase().includes(lower))
+      .filter((item) => item.href && item.label.toLowerCase().includes(lower))
       .map((item) => ({ label: item.label, href: item.href, group: 'Go to page', icon: item.icon }));
 
     const products = await api.products.list((p) => p.name?.toLowerCase().includes(lower) || p.sku?.toLowerCase().includes(lower));

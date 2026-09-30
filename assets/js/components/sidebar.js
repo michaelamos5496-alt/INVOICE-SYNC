@@ -9,7 +9,13 @@ import { displayNameFor, signOut } from '../services/auth.service.js';
 import { initials } from '../utils/formatters.js';
 
 function renderGroup(group, activeKey) {
-  const links = group.items.map((item) => `
+  const links = group.items.map((item) => item.action ? `
+    <button type="button"
+       class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-sunken)] w-full text-left"
+       data-nav-action="${item.action}">
+      <i class="fa-solid ${item.icon} w-4 text-center"></i>
+      <span>${item.label}</span>
+    </button>` : `
     <a href="${item.href}"
        class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-sunken)] ${item.key === activeKey ? 'active' : ''}"
        data-nav-key="${item.key}">
@@ -31,6 +37,12 @@ export function renderSidebar() {
   if (!mount) return;
   const activeKey = getActivePage();
   mount.innerHTML = NAV_GROUPS.map((g) => renderGroup(g, activeKey)).join('');
+  // Action items (not pages) — loaded on demand so the receipt maker costs nothing until it's used.
+  mount.querySelector('[data-nav-action="custom-receipt"]')?.addEventListener('click', async () => {
+    document.getElementById('sidebar-close')?.click(); // close the mobile drawer
+    const { openCustomReceipt } = await import('../pages/custom-receipt.js');
+    openCustomReceipt();
+  });
 }
 
 export function initSidebarToggle() {
