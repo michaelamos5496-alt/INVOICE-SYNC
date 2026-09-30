@@ -17,6 +17,8 @@ import { DataTable } from '../components/table.js';
 import { applyChartDefaults, getChartColors } from '../utils/chart-theme.js';
 import { formatCurrency, formatDate } from '../utils/formatters.js';
 import { escapeHTML } from '../utils/helpers.js';
+import { downloadDailyPDF, downloadDailyCSV, shareDailyPDF } from './daily-report.js';
+import { toast } from '../components/toast.js';
 
 const charts = {};
 
@@ -37,7 +39,26 @@ const renderers = {
   suppliers: renderSupplierTab,
 };
 
+function initDailyDownload() {
+  const input = document.getElementById('daily-report-date');
+  const local = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  input.value = input.max = local(new Date());
+  const run = (fn, btnId) => async () => {
+    if (!input.value) return;
+    const btn = document.getElementById(btnId);
+    btn.disabled = true;
+    try {
+      const result = await fn(input.value);
+      if (result === 'downloaded') toast.info('Sharing isn\'t supported here, so the PDF was downloaded — attach it in WhatsApp or email.');
+    } catch (err) { toast.danger(err.message); } finally { btn.disabled = false; }
+  };
+  document.getElementById('daily-report-pdf').addEventListener('click', run(downloadDailyPDF, 'daily-report-pdf'));
+  document.getElementById('daily-report-share').addEventListener('click', run(shareDailyPDF, 'daily-report-share'));
+  document.getElementById('daily-report-csv').addEventListener('click', run(downloadDailyCSV, 'daily-report-csv'));
+}
+
 export async function initReportsPage() {
+  initDailyDownload();
   applyChartDefaults(Chart);
   initTabs(document.getElementById('reports-tabs'), { onChange: (key) => { activeTab = key; return renderers[key]?.(); } });
   // Live: redraw the tab being looked at when the numbers behind it change (slower debounce — charts are heavier).

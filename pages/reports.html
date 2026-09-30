@@ -50,6 +50,17 @@
         <p class="text-sm text-[var(--text-secondary)] mt-1">Sales, inventory, profit, customer, employee, purchase and supplier reports.</p>
       </div>
 
+      <div class="card p-4 flex flex-wrap items-end gap-3">
+        <div class="mr-auto">
+          <h2 class="font-display font-semibold">Daily Report</h2>
+          <p class="text-sm text-[var(--text-secondary)]">Download any day's sales as a PDF, or share it straight to WhatsApp, email or iMessage.</p>
+        </div>
+        <label class="text-sm">Date<br><input type="date" id="daily-report-date" class="input" /></label>
+        <button type="button" id="daily-report-pdf" class="btn btn-primary"><i class="fa-solid fa-file-pdf mr-1"></i> Download PDF</button>
+        <button type="button" id="daily-report-share" class="btn btn-secondary"><i class="fa-solid fa-share-nodes mr-1"></i> Share</button>
+        <button type="button" id="daily-report-csv" class="btn btn-secondary"><i class="fa-solid fa-file-csv mr-1"></i> CSV</button>
+      </div>
+
       <div class="card p-4">
         <div id="reports-tabs">
           <div class="tabs-list flex-wrap gap-1">

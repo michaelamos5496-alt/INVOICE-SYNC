@@ -192,3 +192,56 @@ export async function getSupplierReport() {
     };
   }).sort((a, b) => b.totalSpend - a.totalSpend);
 }
+
+/** Everything sold on one calendar day (local time). `dateStr` is 'YYYY-MM-DD'. */
+export async function getDailyReport(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const start = new Date(y, m - 1, d);
+  const end = new Date(y, m - 1, d + 1);
+  const [orders, products] = await Promise.all([getAllOrders(), api.products.list()]);
+  const productMap = new Map(products.map((p) => [p.id, p]));
+  const day = orders
+    .filter((o) => { const t = new Date(o.createdAt); return t >= start && t < end; })
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+  const byPaymentMethod = {};
+  const byChannel = {};
+  const byProduct = new Map();
+  let revenue = 0; let cost = 0; let units = 0; let discounts = 0; let tax = 0;
+
+  for (const o of day) {
+    revenue += o.total;
+    discounts += o.discountAmount ?? 0;
+    tax += o.taxAmount ?? 0;
+    byChannel[o.channel] = (byChannel[o.channel] ?? 0) + o.total;
+    // Split payments carry the exact amount per method; otherwise the whole total goes to the one method.
+    if (o.payments && typeof o.payments === 'object') {
+      for (const [method, amt] of Object.entries(o.payments)) {
+        if (Number(amt) > 0) byPaymentMethod[method] = (byPaymentMethod[method] ?? 0) + Number(amt);
+      }
+    } else {
+      const method = o.paymentMethod ?? 'online_checkout';
+      byPaymentMethod[method] = (byPaymentMethod[method] ?? 0) + o.total;
+    }
+    for (const item of o.items ?? []) {
+      const itemCost = (productMap.get(item.productId)?.costPrice ?? 0) * item.quantity;
+      cost += itemCost;
+      units += item.quantity;
+      const row = byProduct.get(item.productId) ?? { name: item.name, units: 0, revenue: 0 };
+      row.units += item.quantity;
+      row.revenue += item.price * item.quantity;
+      byProduct.set(item.productId, row);
+    }
+  }
+
+  return {
+    date: start,
+    orders: day,
+    orderCount: day.length,
+    revenue, units, discounts, tax,
+    grossProfit: revenue - tax - cost,
+    averageOrderValue: day.length ? revenue / day.length : 0,
+    byPaymentMethod, byChannel,
+    byProduct: [...byProduct.values()].sort((a, b) => b.revenue - a.revenue),
+  };
+}
