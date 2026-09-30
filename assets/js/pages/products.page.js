@@ -22,6 +22,7 @@ import { toast } from '../components/toast.js';
 import { initTabs } from '../components/tabs.js';
 import { initDropdown } from '../components/dropdown.js';
 import { formatCurrency } from '../utils/formatters.js';
+import { getCurrency } from '../services/settings.service.js';
 import { debounce, escapeHTML, isSafeImageUrl } from '../utils/helpers.js';
 import { compressImage } from '../utils/image-compress.js';
 import { saveImage, deleteImages, isStoredRef, imageTagHTML, hydrateImages } from '../services/image-store.service.js';
@@ -41,6 +42,8 @@ const STOCK_BADGE = {
 let table;
 let lookups = { categories: [], brands: [], suppliers: [], warehouses: [] };
 let variantState = [];
+let openGroups = new Set(); // option-1 values whose group is expanded in the variant table
+let groupByIdx = 0;
 let selectedVariants = new Set(); // indexes ticked for bulk edit
 let optionsState = []; // [{ name, values[], editing }] — Shopify-style options; variantState is generated from them
 let editingProduct = null; // the product open in the form (null when adding), so stock can follow its variants
@@ -208,8 +211,6 @@ function selectOptions(list, selectedId) {
     list.map((item) => `<option value="${item.id}" ${item.id === selectedId ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('');
 }
 
-const SUGGESTED_OPTIONS = ['Size', 'Color', 'Material', 'Style', 'Fit', 'Length'];
-
 // One-tap value sets for a fashion store, offered under the option they belong to.
 const SIZE_PRESETS = [
   { label: 'Clothing XS–XXL', values: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
@@ -246,170 +247,235 @@ function renderVariantEditor() {
   renderVariantTable();
 }
 
+const OPTION_NAMES = ['Size', 'Color', 'Material', 'Style', 'Title'];
+
 function renderOptionsEditor() {
   const box = document.getElementById('variant-options');
   if (!box) return;
-  const used = new Set(optionsState.map((o) => o.name.toLowerCase()));
-  box.innerHTML = optionsState.map((o, i) => o.editing ? `
+  const nameTaken = (name, except) => optionsState.some((o, k) => k !== except && o.name.trim().toLowerCase() === name.trim().toLowerCase());
+
+  box.innerHTML = optionsState.map((o, i) => {
+    if (!o.editing) {
+      return `<div class="variant-card"><button type="button" class="w-full text-left" data-edit-option="${i}" aria-label="Edit option ${escapeHTML(o.name)}">
+        <p class="text-sm font-semibold">${escapeHTML(o.name)}</p>
+        <div class="flex flex-wrap gap-1.5 mt-1.5">${o.values.map((v) => `<span class="badge badge-neutral">${escapeHTML(v)}</span>`).join('')}</div></button></div>`;
+    }
+    const isCustom = o.custom || (o.name && !OPTION_NAMES.includes(o.name));
+    const choices = OPTION_NAMES.filter((n) => n === o.name || !nameTaken(n, i));
+    const rows = [...o.values.map((v) => v), ''];
+    return `
       <fieldset class="variant-card space-y-3" data-option="${i}">
         <legend class="sr-only">Option ${i + 1}</legend>
         <div>
           <label class="field-label" for="opt-${i}-name">Option name</label>
-          <input id="opt-${i}-name" class="input" list="opt-suggest" value="${escapeHTML(o.name)}" placeholder="e.g. Size" data-opt-name />
+          <select id="opt-${i}-name" class="input" data-opt-select>
+            ${choices.map((n) => `<option value="${n}" ${!isCustom && n === o.name ? 'selected' : ''}>${n}</option>`).join('')}
+            <option value="__custom" ${isCustom ? 'selected' : ''}>Create your own</option>
+          </select>
+          ${isCustom ? `<input class="input mt-2" value="${escapeHTML(o.name)}" placeholder="Option name, e.g. Length" aria-label="Custom option name" data-opt-custom />` : ''}
         </div>
         <div>
-          <label class="field-label" for="opt-${i}-value">Option values</label>
-          <div class="flex flex-wrap gap-1.5 mb-2">
-            ${o.values.map((v, j) => `<span class="badge badge-neutral gap-1">${escapeHTML(v)} <button type="button" class="opacity-60 hover:opacity-100" data-del-value="${i}:${j}" aria-label="Remove ${escapeHTML(v)}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></span>`).join('')}
+          <p class="field-label">Option values</p>
+          <div class="space-y-1.5" data-values>
+            ${rows.map((v, j) => `
+              <div class="flex items-center gap-2" data-value-row="${j}" ${j < o.values.length ? 'draggable="true"' : ''}>
+                <span class="text-[var(--text-muted)] w-4 text-center ${j < o.values.length ? 'cursor-grab' : 'opacity-0'}" aria-hidden="true"><i class="fa-solid fa-grip-vertical"></i></span>
+                <input class="input flex-1" value="${escapeHTML(v)}" placeholder="${j < o.values.length ? '' : 'Add another value'}" aria-label="Option value ${j + 1}" data-opt-value="${j}" />
+                ${j < o.values.length ? `<button type="button" class="btn btn-ghost btn-sm" data-del-value="${j}" aria-label="Delete ${escapeHTML(v)}"><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button>` : '<span class="w-9"></span>'}
+              </div>`).join('')}
           </div>
-          <input id="opt-${i}-value" class="input" placeholder="Type a value, press Enter or comma to add" data-opt-value />
         </div>
         ${presetsFor(o.name).length ? `<div>
           <p class="field-hint mb-1.5">Quick add</p>
-          <div class="flex flex-wrap gap-1.5">${presetsFor(o.name).map((pr, k) => `<button type="button" class="btn btn-secondary btn-sm" data-preset="${i}:${k}">${pr.set ? '<i class="fa-solid fa-plus" aria-hidden="true"></i> ' : ''}${escapeHTML(pr.label)}</button>`).join('')}</div>
+          <div class="flex flex-wrap gap-1.5">${presetsFor(o.name).map((pr, k) => `<button type="button" class="btn btn-secondary btn-sm" data-preset="${k}">${pr.set ? '<i class="fa-solid fa-plus" aria-hidden="true"></i> ' : ''}${escapeHTML(pr.label)}</button>`).join('')}</div>
         </div>` : ''}
         <div class="flex items-center justify-between">
-          <button type="button" class="btn btn-ghost btn-sm" data-del-option="${i}"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Delete</button>
+          <button type="button" class="btn btn-secondary btn-sm text-[var(--color-danger-600)]" data-del-option="${i}">Delete</button>
           <button type="button" class="btn btn-primary btn-sm" data-done-option="${i}">Done</button>
         </div>
-      </fieldset>` : `
-      <div class="variant-card flex items-center justify-between gap-3">
-        <button type="button" class="text-left flex-1 min-w-0" data-edit-option="${i}">
-          <p class="text-sm font-semibold">${escapeHTML(o.name)}</p>
-          <div class="flex flex-wrap gap-1.5 mt-1.5">${o.values.map((v) => `<span class="badge badge-neutral">${escapeHTML(v)}</span>`).join('')}</div>
-        </button>
-        <button type="button" class="btn btn-ghost btn-sm" data-edit-option="${i}">Edit</button>
-      </div>`).join('') + `
-    <datalist id="opt-suggest">${SUGGESTED_OPTIONS.filter((n) => !used.has(n.toLowerCase())).map((n) => `<option value="${n}"></option>`).join('')}</datalist>`;
+      </fieldset>`;
+  }).join('');
 
   const addBtn = document.getElementById('add-option');
   addBtn.hidden = optionsState.length >= MAX_OPTIONS;
   addBtn.disabled = optionsState.some((o) => o.editing);
+  addBtn.innerHTML = optionsState.length
+    ? '<i class="fa-solid fa-circle-plus"></i> Add another option'
+    : '<i class="fa-solid fa-circle-plus"></i> Add options like size or color';
 
-  const addValues = (i, raw) => {
-    const o = optionsState[i];
-    raw.split(',').map((v) => v.trim()).filter(Boolean).forEach((v) => {
-      if (!o.values.some((x) => x.toLowerCase() === v.toLowerCase())) o.values.push(v);
-    });
-    renderOptionsEditor();
-    document.getElementById(`opt-${i}-value`)?.focus();
-    regenerateVariants(); renderVariantTable();
-  };
-  box.querySelectorAll('[data-opt-name]').forEach((input) => {
-    input.addEventListener('input', () => { optionsState[Number(input.closest('[data-option]').dataset.option)].name = input.value; });
-    // Quick-add sets follow the option name, so re-draw once the name is settled (a full redraw mid-typing would steal focus).
-    input.addEventListener('change', renderOptionsEditor);
-  });
-  box.querySelectorAll('[data-opt-value]').forEach((input) => {
-    const i = Number(input.closest('[data-option]').dataset.option);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); if (input.value.trim()) addValues(i, input.value); }
-      else if (e.key === 'Backspace' && !input.value && optionsState[i].values.length) { optionsState[i].values.pop(); renderOptionsEditor(); regenerateVariants(); renderVariantTable(); document.getElementById(`opt-${i}-value`)?.focus(); }
-    });
-    input.addEventListener('blur', () => { if (input.value.trim()) addValues(i, input.value); });
-  });
-  box.querySelectorAll('[data-preset]').forEach((btn) => btn.addEventListener('click', () => {
-    const [i, k] = btn.dataset.preset.split(':').map(Number);
-    const o = optionsState[i];
-    const preset = presetsFor(o.name)[k];
-    if (preset.set) o.values = [...preset.values]; // a size set replaces, so switching XS–XXL → numeric doesn't mix the two
-    else preset.values.forEach((v) => { if (!o.values.some((x) => x.toLowerCase() === v.toLowerCase())) o.values.push(v); });
-    renderOptionsEditor(); regenerateVariants(); renderVariantTable();
-  }));
-  box.querySelectorAll('[data-del-value]').forEach((btn) => btn.addEventListener('click', () => {
-    const [i, j] = btn.dataset.delValue.split(':').map(Number);
-    optionsState[i].values.splice(j, 1);
-    renderOptionsEditor(); regenerateVariants(); renderVariantTable();
-  }));
   box.querySelectorAll('[data-edit-option]').forEach((btn) => btn.addEventListener('click', () => {
     optionsState.forEach((o) => { o.editing = false; });
     optionsState[Number(btn.dataset.editOption)].editing = true;
     renderOptionsEditor();
   }));
-  box.querySelectorAll('[data-del-option]').forEach((btn) => btn.addEventListener('click', () => {
-    optionsState.splice(Number(btn.dataset.delOption), 1);
-    renderOptionsEditor(); regenerateVariants(); renderVariantTable();
-  }));
-  box.querySelectorAll('[data-done-option]').forEach((btn) => btn.addEventListener('click', () => {
-    const i = Number(btn.dataset.doneOption);
+
+  box.querySelectorAll('[data-option]').forEach((fs) => {
+    const i = Number(fs.dataset.option);
     const o = optionsState[i];
-    const pending = document.getElementById(`opt-${i}-value`)?.value.trim();
-    if (pending) pending.split(',').map((v) => v.trim()).filter(Boolean).forEach((v) => { if (!o.values.includes(v)) o.values.push(v); });
-    o.name = o.name.trim();
-    if (!o.name) { toast.danger('Give this option a name, like Size or Color.'); return; }
-    if (optionsState.some((x, k) => k !== i && x.name.toLowerCase() === o.name.toLowerCase())) { toast.danger('Two options can\'t have the same name.'); return; }
-    if (!o.values.length) { toast.danger('Add at least one value.'); return; }
-    o.editing = false;
-    regenerateVariants();
-    if (variantState.length > MAX_VARIANTS) { toast.danger(`That makes ${variantState.length} variants — the limit is ${MAX_VARIANTS}. Remove some values.`); o.editing = true; }
-    renderVariantEditor();
-  }));
+    const redrawKeeping = (selector) => { renderOptionsEditor(); document.querySelector(`[data-option="${i}"] ${selector}`)?.focus(); };
+
+    fs.querySelector('[data-opt-select]').addEventListener('change', (e) => {
+      if (e.target.value === '__custom') { o.custom = true; o.name = ''; redrawKeeping('[data-opt-custom]'); }
+      else { o.custom = false; o.name = e.target.value; renderOptionsEditor(); }
+    });
+    fs.querySelector('[data-opt-custom]')?.addEventListener('input', (e) => { o.name = e.target.value; });
+    fs.querySelector('[data-opt-custom]')?.addEventListener('change', () => renderOptionsEditor());
+
+    // One field per value. Typing in the last (empty) row adds the next empty row, like Shopify.
+    fs.querySelectorAll('[data-opt-value]').forEach((input) => {
+      const j = Number(input.dataset.optValue);
+      input.addEventListener('input', () => {
+        const isNew = j >= o.values.length;
+        if (isNew) {
+          if (!input.value.trim()) return;
+          o.values.push(input.value);
+          renderOptionsEditor();
+          const el = document.querySelector(`[data-option="${i}"] [data-opt-value="${j}"]`);
+          el?.focus(); el?.setSelectionRange(el.value.length, el.value.length);
+        } else o.values[j] = input.value;
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); document.querySelector(`[data-option="${i}"] [data-opt-value="${j + 1}"]`)?.focus(); }
+      });
+    });
+    fs.querySelectorAll('[data-del-value]').forEach((btn) => btn.addEventListener('click', () => {
+      o.values.splice(Number(btn.dataset.delValue), 1);
+      renderOptionsEditor();
+    }));
+    // Drag to reorder the values.
+    let dragFrom = null;
+    fs.querySelectorAll('[data-value-row][draggable]').forEach((row) => {
+      row.addEventListener('dragstart', () => { dragFrom = Number(row.dataset.valueRow); });
+      row.addEventListener('dragover', (e) => e.preventDefault());
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const to = Number(row.dataset.valueRow);
+        if (dragFrom === null || dragFrom === to) return;
+        const [moved] = o.values.splice(dragFrom, 1);
+        o.values.splice(to, 0, moved);
+        renderOptionsEditor();
+      });
+    });
+    fs.querySelectorAll('[data-preset]').forEach((btn) => btn.addEventListener('click', () => {
+      const preset = presetsFor(o.name)[Number(btn.dataset.preset)];
+      if (preset.set) o.values = [...preset.values];
+      else preset.values.forEach((v) => { if (!o.values.some((x) => x.toLowerCase() === v.toLowerCase())) o.values.push(v); });
+      renderOptionsEditor();
+    }));
+    fs.querySelector('[data-del-option]').addEventListener('click', () => {
+      optionsState.splice(i, 1);
+      regenerateVariants();
+      renderVariantEditor();
+    });
+    fs.querySelector('[data-done-option]').addEventListener('click', () => {
+      o.name = o.name.trim();
+      o.values = [...new Map(o.values.map((v) => v.trim()).filter(Boolean).map((v) => [v.toLowerCase(), v])).values()];
+      if (!o.name) { toast.danger('Give this option a name.'); return; }
+      if (nameTaken(o.name, i)) { toast.danger('Two options can\'t have the same name.'); return; }
+      if (!o.values.length) { toast.danger('Add at least one option value.'); return; }
+      const before = variantState;
+      o.editing = false;
+      regenerateVariants();
+      if (variantState.length > MAX_VARIANTS) {
+        variantState = before; o.editing = true;
+        toast.danger(`That would make more than ${MAX_VARIANTS} variants. Remove some values.`);
+        renderOptionsEditor(); return;
+      }
+      openGroups = new Set();
+      renderVariantEditor();
+    });
+  });
 }
 
 function renderVariantTable() {
   const container = document.getElementById('variant-rows');
   if (!container) return;
-  if (!variantState.length) {
-    container.innerHTML = '<p class="text-sm text-[var(--text-muted)]">Add options like size or color and every combination shows up here, each with its own price, stock, SKU and barcode.</p>';
-    syncStockField();
-    return;
-  }
-  const cell = (i, key, { type = 'text', min = '', label, cls = '' } = {}) =>
-    `<input class="input input-sm ${cls}" type="${type}" ${type === 'number' ? `step="any" inputmode="decimal" min="${min}"` : ''} value="${escapeHTML(variantState[i][key] ?? '')}" data-vfield="${key}" data-vidx="${i}" aria-label="${label} for ${escapeHTML(variantLabel(variantState[i]))}" />`;
+  const committed = optionsState.filter((o) => !o.editing);
+  if (!variantState.length) { container.innerHTML = ''; syncStockField(); return; }
 
-  // Like Shopify, group by the first option when there are several options, with a total per group.
-  const grouped = optionsState.length > 1;
-  const rows = [];
-  let lastGroup;
-  variantState.forEach((v, i) => {
-    if (grouped && v.option1 !== lastGroup) {
-      lastGroup = v.option1;
-      const groupStock = variantState.filter((x) => x.option1 === v.option1).reduce((s, x) => s + (Number(x.stock) || 0), 0);
-      rows.push(`<tr class="bg-[var(--surface-sunken)]"><td colspan="6" class="font-semibold text-sm px-3 py-2">${escapeHTML(v.option1)} <span class="font-normal text-[var(--text-muted)]">· ${variantState.filter((x) => x.option1 === v.option1).length} variants · ${groupStock} in stock</span></td></tr>`);
-    }
-    const name = grouped ? [v.option2, v.option3].filter(Boolean).join(' / ') : v.title;
-    rows.push(`<tr>
+  const cur = getCurrency();
+  const grouped = committed.length > 1;
+  groupByIdx = Math.min(groupByIdx, committed.length - 1);
+  const gk = `option${groupByIdx + 1}`;
+  const money = (n) => formatCurrency(n);
+  const priceRange = (list) => {
+    const ps = list.map((v) => Number(v.price) || 0);
+    const lo = Math.min(...ps); const hi = Math.max(...ps);
+    return lo === hi ? money(lo) : `${money(lo)} – ${money(hi)}`;
+  };
+  const cell = (i, key, label, extra = '') =>
+    `<input class="input input-sm ${extra}" ${['price', 'stock'].includes(key) ? 'type="number" step="any" inputmode="decimal" min="0"' : 'type="text"'} value="${escapeHTML(variantState[i][key] ?? '')}" data-vfield="${key}" data-vidx="${i}" aria-label="${label} for ${escapeHTML(variantState[i].title)}" />`;
+  const variantRow = (v, i, name, indent) => `<tr data-vrow="${i}">
       <td class="pl-3 py-2 w-8"><input type="checkbox" data-vselect="${i}" ${selectedVariants.has(i) ? 'checked' : ''} aria-label="Select ${escapeHTML(v.title)}" /></td>
-      <td class="px-3 py-2 text-sm font-medium whitespace-nowrap">${escapeHTML(name)}</td>
-      <td class="px-2 py-1.5 w-28">${cell(i, 'price', { type: 'number', min: 0, label: 'Price' })}</td>
-      <td class="px-2 py-1.5 w-24">${cell(i, 'stock', { type: 'number', min: 0, label: 'Quantity' })}</td>
-      <td class="px-2 py-1.5 w-40">${cell(i, 'sku', { label: 'SKU', cls: 'font-mono' })}</td>
-      <td class="px-2 py-1.5 w-44">${cell(i, 'barcode', { label: 'Barcode', cls: 'font-mono' })}</td>
-    </tr>`);
-  });
+      <td class="py-2 pr-3 text-sm font-medium whitespace-nowrap ${indent ? 'pl-6' : ''}">${escapeHTML(name)}</td>
+      <td class="px-2 py-1.5 w-32"><div class="relative"><span class="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)] pointer-events-none">${escapeHTML(cur)}</span>${cell(i, 'price', 'Price', 'pl-10')}</div></td>
+      <td class="px-2 py-1.5 w-28">${cell(i, 'stock', 'Available')}</td>
+      <td class="px-2 py-1.5 w-40">${cell(i, 'sku', 'SKU', 'font-mono')}</td>
+      <td class="px-2 py-1.5 w-44">${cell(i, 'barcode', 'Barcode', 'font-mono')}</td>
+    </tr>`;
 
-  const target = selectedVariants.size ? `${selectedVariants.size} selected` : `all ${variantState.length}`;
+  const rows = [];
+  if (grouped) {
+    const groups = new Map();
+    variantState.forEach((v, i) => { if (!groups.has(v[gk])) groups.set(v[gk], []); groups.get(v[gk]).push(i); });
+    for (const [label, idxs] of groups) {
+      const list = idxs.map((i) => variantState[i]);
+      const open = openGroups.has(label);
+      const allSel = idxs.every((i) => selectedVariants.has(i));
+      const some = idxs.some((i) => selectedVariants.has(i));
+      rows.push(`<tr class="bg-[var(--surface-sunken)]">
+        <td class="pl-3 py-2 w-8"><input type="checkbox" data-gselect="${escapeHTML(label)}" ${allSel ? 'checked' : ''} ${some && !allSel ? 'data-indeterminate="1"' : ''} aria-label="Select all ${escapeHTML(label)} variants" /></td>
+        <td class="py-2 pr-3 text-sm"><button type="button" class="flex items-center gap-2 text-left" data-gtoggle="${escapeHTML(label)}" aria-expanded="${open}"><i class="fa-solid fa-chevron-${open ? 'down' : 'right'} text-xs text-[var(--text-muted)]" aria-hidden="true"></i><span class="font-semibold">${escapeHTML(label)}</span><span class="text-[var(--text-muted)]">${list.length} variant${list.length === 1 ? '' : 's'}</span></button></td>
+        <td class="px-2 py-2 text-sm">${priceRange(list)}</td>
+        <td class="px-2 py-2 text-sm">${list.reduce((s, v) => s + (Number(v.stock) || 0), 0)} available</td>
+        <td colspan="2"></td></tr>`);
+      if (open) idxs.forEach((i) => rows.push(variantRow(variantState[i], i, ['option1', 'option2', 'option3'].filter((k) => k !== gk).map((k) => variantState[i][k]).filter(Boolean).join(' / '), true)));
+    }
+  } else {
+    variantState.forEach((v, i) => rows.push(variantRow(v, i, v.title, false)));
+  }
+
+  const nSel = selectedVariants.size;
+  const allChecked = nSel === variantState.length;
   container.innerHTML = `
-    <div class="flex flex-wrap items-end gap-2 mb-2">
-      <p class="text-sm font-semibold mr-auto">${variantState.length} variant${variantState.length === 1 ? '' : 's'}</p>
-      <div class="flex flex-wrap items-end gap-2">
-        <div><label class="field-label" for="bulk-field">Bulk edit · ${target}</label>
-          <select id="bulk-field" class="input input-sm">
-            <option value="price">Set price</option>
-            <option value="stock">Set quantity</option>
-            <option value="addStock">Add / remove quantity</option>
-            <option value="priceChange">Change price by %</option>
+    <div class="border rounded-[var(--radius-md)] overflow-hidden" style="border-color: var(--border-subtle)">
+      <div class="flex flex-wrap items-center gap-2 px-3 py-2 border-b" style="border-color: var(--border-subtle)">
+        ${nSel ? `
+          <span class="text-sm font-semibold">${nSel} selected</span>
+          <select id="bulk-field" class="input input-sm w-auto" aria-label="Bulk edit action">
+            <option value="price">Edit prices — set to</option>
+            <option value="priceChange">Edit prices — change by %</option>
+            <option value="stock">Edit quantities — set to</option>
+            <option value="addStock">Edit quantities — add / remove</option>
             <option value="sku">Set SKU prefix</option>
-          </select></div>
-        <input id="bulk-value" class="input input-sm w-28" inputmode="decimal" placeholder="Value" aria-label="Bulk edit value" />
-        <button type="button" class="btn btn-secondary btn-sm" id="bulk-apply">Apply</button>
+          </select>
+          <input id="bulk-value" class="input input-sm w-28" inputmode="decimal" placeholder="Value" aria-label="Bulk edit value" />
+          <button type="button" class="btn btn-secondary btn-sm" id="bulk-apply">Apply</button>
+          <button type="button" class="btn btn-secondary btn-sm text-[var(--color-danger-600)]" id="bulk-delete">Delete variants</button>
+        ` : `
+          <span class="text-sm font-semibold mr-auto">${variantState.length} variant${variantState.length === 1 ? '' : 's'}</span>
+          ${grouped ? `<label class="text-sm flex items-center gap-2">Group by <select id="group-by" class="input input-sm w-auto">${committed.map((o, k) => `<option value="${k}" ${k === groupByIdx ? 'selected' : ''}>${escapeHTML(o.name)}</option>`).join('')}</select></label>` : ''}
+        `}
       </div>
-    </div>
-    <div class="overflow-x-auto border rounded-[var(--radius-md)]" style="border-color: var(--border-subtle)">
-      <table class="w-full text-left">
-        <thead><tr class="text-xs uppercase text-[var(--text-muted)]"><th class="pl-3 py-2 w-8"><input type="checkbox" id="vselect-all" aria-label="Select all variants" ${selectedVariants.size === variantState.length ? 'checked' : ''} /></th><th class="px-3 py-2">Variant</th><th class="px-2 py-2">Price</th><th class="px-2 py-2">Quantity</th><th class="px-2 py-2">SKU</th><th class="px-2 py-2">Barcode</th></tr></thead>
-        <tbody>${rows.join('')}</tbody>
-      </table>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left">
+          <thead><tr class="text-xs text-[var(--text-muted)]">
+            <th class="pl-3 py-2 w-8"><input type="checkbox" id="vselect-all" ${allChecked ? 'checked' : ''} aria-label="Select all variants" /></th>
+            <th class="px-3 py-2 font-medium">Variant</th><th class="px-2 py-2 font-medium">Price</th><th class="px-2 py-2 font-medium">Available</th><th class="px-2 py-2 font-medium">SKU</th><th class="px-2 py-2 font-medium">Barcode</th>
+          </tr></thead>
+          <tbody>${rows.join('')}</tbody>
+        </table>
+      </div>
     </div>`;
 
+  container.querySelectorAll('[data-indeterminate]').forEach((el) => { el.indeterminate = true; });
   container.querySelectorAll('[data-vfield]').forEach((input) => {
     input.addEventListener('input', () => {
       const key = input.dataset.vfield;
       variantState[Number(input.dataset.vidx)][key] = ['price', 'stock'].includes(key) ? Number(input.value) : input.value;
       if (key === 'stock') syncStockField();
     });
-    if (input.dataset.vfield === 'stock') input.addEventListener('change', renderVariantTable); // refresh the group totals
-    // Spreadsheet feel: Enter moves to the same column in the next variant.
+    if (input.dataset.vfield === 'stock') input.addEventListener('change', renderVariantTable); // refresh group totals
     input.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
@@ -421,18 +487,28 @@ function renderVariantTable() {
     if (box.checked) selectedVariants.add(i); else selectedVariants.delete(i);
     renderVariantTable();
   }));
+  container.querySelectorAll('[data-gselect]').forEach((box) => box.addEventListener('change', () => {
+    variantState.forEach((v, i) => { if (v[gk] === box.dataset.gselect) { if (box.checked) selectedVariants.add(i); else selectedVariants.delete(i); } });
+    renderVariantTable();
+  }));
+  container.querySelectorAll('[data-gtoggle]').forEach((btn) => btn.addEventListener('click', () => {
+    const label = btn.dataset.gtoggle;
+    if (openGroups.has(label)) openGroups.delete(label); else openGroups.add(label);
+    renderVariantTable();
+  }));
   container.querySelector('#vselect-all').addEventListener('change', (e) => {
     selectedVariants = e.target.checked ? new Set(variantState.map((_, i) => i)) : new Set();
     renderVariantTable();
   });
-  container.querySelector('#bulk-apply').addEventListener('click', () => {
+  container.querySelector('#group-by')?.addEventListener('change', (e) => { groupByIdx = Number(e.target.value); openGroups = new Set(); renderVariantTable(); });
+
+  container.querySelector('#bulk-apply')?.addEventListener('click', () => {
     const field = container.querySelector('#bulk-field').value;
     const raw = container.querySelector('#bulk-value').value.trim();
     const num = Number(raw);
     if (raw === '' || (field !== 'sku' && Number.isNaN(num))) { toast.danger('Enter a value to apply.'); return; }
     if (['price', 'stock'].includes(field) && num < 0) { toast.danger('That can\'t be negative.'); return; }
-    const idxs = selectedVariants.size ? [...selectedVariants] : variantState.map((_, i) => i);
-    for (const i of idxs) {
+    for (const i of selectedVariants) {
       const v = variantState[i];
       if (field === 'price') v.price = num;
       else if (field === 'stock') v.stock = Math.floor(num);
@@ -440,8 +516,19 @@ function renderVariantTable() {
       else if (field === 'priceChange') v.price = Math.max(0, Number(((Number(v.price) || 0) * (1 + num / 100)).toFixed(2)));
       else if (field === 'sku') v.sku = `${raw}-${[v.option1, v.option2, v.option3].filter(Boolean).join('-').replace(/[^A-Za-z0-9]+/g, '').toUpperCase()}`;
     }
-    toast.success(`Updated ${idxs.length} variant${idxs.length === 1 ? '' : 's'}.`);
+    toast.success(`Updated ${selectedVariants.size} variant${selectedVariants.size === 1 ? '' : 's'}.`);
     renderVariantTable();
+  });
+  container.querySelector('#bulk-delete')?.addEventListener('click', () => {
+    if (!window.confirm(`Delete ${selectedVariants.size} variant${selectedVariants.size === 1 ? '' : 's'}?`)) return;
+    variantState = variantState.filter((_, i) => !selectedVariants.has(i));
+    selectedVariants = new Set();
+    // Drop option values that no variant uses any more; an option with no values goes too.
+    optionsState = optionsState
+      .map((o, k) => ({ ...o, values: o.values.filter((val) => variantState.some((v) => v[`option${k + 1}`] === val)) }))
+      .filter((o) => o.values.length);
+    if (!variantState.length) optionsState = [];
+    renderVariantEditor();
   });
   syncStockField();
 }
@@ -659,9 +746,9 @@ function buildFormHTML(product) {
       </div>
 
       <div data-tab-panel="variants" class="hidden space-y-3">
-        <p class="text-sm text-[var(--text-secondary)]">Does this product come in different sizes, colors or materials? Add up to ${MAX_OPTIONS} options — every combination becomes a variant with its own price, stock, SKU and barcode.</p>
+        <p class="text-sm text-[var(--text-secondary)]">Add options like size or color if this product comes in more than one version.</p>
         <div id="variant-options" class="space-y-3"></div>
-        <button type="button" id="add-option" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Add option (size, color…)</button>
+        <button type="button" id="add-option" class="btn btn-secondary btn-sm"><i class="fa-solid fa-circle-plus"></i> Add options like size or color</button>
         <div id="variant-rows"></div>
       </div>
 
@@ -728,7 +815,7 @@ export function openProductModal(product = null) {
   el.querySelector('#f-price').addEventListener('change', () => {
     const price = Number(el.querySelector('#f-price').value) || 0;
     if (!variantState.length) return;
-    if (!product) { variantState.forEach((v) => { v.price = price; }); renderVariantTable(); }
+    if (!product && variantState.length && !variantState.some((v) => v.sku || v.barcode || v.stock)) { variantState.forEach((v) => { v.price = price; }); renderVariantTable(); }
   });
   // ---- photos ----
   const fileInput = el.querySelector('#f-image-files');

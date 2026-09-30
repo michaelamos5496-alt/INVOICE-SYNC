@@ -46,13 +46,18 @@ export function normalizeOptions(options = []) {
  * values) keep their price, stock, SKU and barcode; new combinations start
  * with the product's price and no stock.
  */
-export function generateVariants(options, existing = [], defaultPrice = 0) {
+export function generateVariants(options, existing = [], defaultPrice = 0, { keepDeleted = true } = {}) {
   const opts = normalizeOptions(options);
   if (!opts.length) return [];
   const combos = opts.reduce((acc, o) => acc.flatMap((c) => o.values.map((v) => [...c, v])), [[]]);
   const key = (vals) => vals.join('\u0001');
   const byKey = new Map(existing.map((v) => [key([v.option1, v.option2, v.option3].filter((x) => x != null && x !== '')), v]));
-  return combos.map((vals) => {
+  // Like Shopify: a variant you deleted stays deleted; only combinations that use a brand-new value are added.
+  const seen = opts.map((_, k) => new Set(existing.map((v) => v[`option${k + 1}`])));
+  const wanted = keepDeleted && existing.length
+    ? combos.filter((vals) => byKey.has(key(vals)) || vals.some((v, k) => !seen[k].has(v)))
+    : combos;
+  return wanted.map((vals) => {
     const old = byKey.get(key(vals));
     return {
       title: vals.join(' / '), option1: vals[0], option2: vals[1] ?? null, option3: vals[2] ?? null,
