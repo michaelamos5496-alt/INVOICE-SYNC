@@ -22,6 +22,7 @@ import { migrateLegacyAutoSeed } from './services/reset.service.js';
 import { toast } from './components/toast.js';
 import { requireSession } from './services/auth.service.js';
 import { initBrand } from './utils/brand.js';
+import { initPWA } from './utils/pwa.js';
 import { initSettings, onRemoteSettingsChange } from './services/settings.service.js';
 import { showConnectionProblem, connectionProblemFor } from './components/connection-screen.js';
 
@@ -50,6 +51,7 @@ export async function bootstrapApp() {
   initBrand(); // store name from Settings → sidebar + tab title, kept live
   initSidebarToggle();
   initTopbar();
+  initPWA();
   // Page shells stay hidden (see main.css) until the session is confirmed.
   document.body.classList.add('auth-ready');
 
