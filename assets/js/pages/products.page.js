@@ -208,7 +208,30 @@ function selectOptions(list, selectedId) {
     list.map((item) => `<option value="${item.id}" ${item.id === selectedId ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('');
 }
 
-const SUGGESTED_OPTIONS = ['Size', 'Color', 'Material', 'Style'];
+const SUGGESTED_OPTIONS = ['Size', 'Color', 'Material', 'Style', 'Fit', 'Length'];
+
+// One-tap value sets for a fashion store, offered under the option they belong to.
+const SIZE_PRESETS = [
+  { label: 'Clothing XS–XXL', values: ['XS', 'S', 'M', 'L', 'XL', 'XXL'] },
+  { label: 'Clothing S–3XL', values: ['S', 'M', 'L', 'XL', 'XXL', '3XL'] },
+  { label: 'Numeric 6–18', values: ['6', '8', '10', '12', '14', '16', '18'] },
+  { label: 'Waist 28–40', values: ['28', '30', '32', '34', '36', '38', '40'] },
+  { label: 'Shoes EU 36–46', values: ['36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46'] },
+  { label: 'Shoes UK 3–12', values: ['3', '4', '5', '6', '7', '8', '9', '10', '11', '12'] },
+  { label: 'Kids 2–14', values: ['2', '3', '4', '5', '6', '7', '8', '10', '12', '14'] },
+  { label: 'Baby 0–24m', values: ['0-3M', '3-6M', '6-12M', '12-18M', '18-24M'] },
+  { label: 'One size', values: ['One Size'] },
+];
+const COLOR_PRESETS = ['Black', 'White', 'Navy', 'Grey', 'Beige', 'Brown', 'Red', 'Pink', 'Blue', 'Green', 'Yellow', 'Orange', 'Purple', 'Cream', 'Gold', 'Multicolor'];
+const MATERIAL_PRESETS = ['Cotton', 'Linen', 'Denim', 'Silk', 'Wool', 'Polyester', 'Leather', 'Ankara', 'Kente'];
+const FIT_PRESETS = ['Slim', 'Regular', 'Relaxed', 'Oversized'];
+
+function presetsFor(name) {
+  const n = name.trim().toLowerCase();
+  if (n === 'size') return SIZE_PRESETS.map((p) => ({ label: p.label, values: p.values, set: true }));
+  const list = n === 'color' || n === 'colour' ? COLOR_PRESETS : n === 'material' ? MATERIAL_PRESETS : n === 'fit' ? FIT_PRESETS : [];
+  return list.map((v) => ({ label: v, values: [v] }));
+}
 
 /** Rebuilds the variant list from the options, keeping what was already typed for combinations that still exist. */
 function regenerateVariants() {
@@ -241,6 +264,10 @@ function renderOptionsEditor() {
           </div>
           <input id="opt-${i}-value" class="input" placeholder="Type a value, press Enter or comma to add" data-opt-value />
         </div>
+        ${presetsFor(o.name).length ? `<div>
+          <p class="field-hint mb-1.5">Quick add</p>
+          <div class="flex flex-wrap gap-1.5">${presetsFor(o.name).map((pr, k) => `<button type="button" class="btn btn-secondary btn-sm" data-preset="${i}:${k}">${pr.set ? '<i class="fa-solid fa-plus" aria-hidden="true"></i> ' : ''}${escapeHTML(pr.label)}</button>`).join('')}</div>
+        </div>` : ''}
         <div class="flex items-center justify-between">
           <button type="button" class="btn btn-ghost btn-sm" data-del-option="${i}"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Delete</button>
           <button type="button" class="btn btn-primary btn-sm" data-done-option="${i}">Done</button>
@@ -270,6 +297,8 @@ function renderOptionsEditor() {
   };
   box.querySelectorAll('[data-opt-name]').forEach((input) => {
     input.addEventListener('input', () => { optionsState[Number(input.closest('[data-option]').dataset.option)].name = input.value; });
+    // Quick-add sets follow the option name, so re-draw once the name is settled (a full redraw mid-typing would steal focus).
+    input.addEventListener('change', renderOptionsEditor);
   });
   box.querySelectorAll('[data-opt-value]').forEach((input) => {
     const i = Number(input.closest('[data-option]').dataset.option);
@@ -279,6 +308,14 @@ function renderOptionsEditor() {
     });
     input.addEventListener('blur', () => { if (input.value.trim()) addValues(i, input.value); });
   });
+  box.querySelectorAll('[data-preset]').forEach((btn) => btn.addEventListener('click', () => {
+    const [i, k] = btn.dataset.preset.split(':').map(Number);
+    const o = optionsState[i];
+    const preset = presetsFor(o.name)[k];
+    if (preset.set) o.values = [...preset.values]; // a size set replaces, so switching XS–XXL → numeric doesn't mix the two
+    else preset.values.forEach((v) => { if (!o.values.some((x) => x.toLowerCase() === v.toLowerCase())) o.values.push(v); });
+    renderOptionsEditor(); regenerateVariants(); renderVariantTable();
+  }));
   box.querySelectorAll('[data-del-value]').forEach((btn) => btn.addEventListener('click', () => {
     const [i, j] = btn.dataset.delValue.split(':').map(Number);
     optionsState[i].values.splice(j, 1);
@@ -624,7 +661,7 @@ function buildFormHTML(product) {
       <div data-tab-panel="variants" class="hidden space-y-3">
         <p class="text-sm text-[var(--text-secondary)]">Does this product come in different sizes, colors or materials? Add up to ${MAX_OPTIONS} options — every combination becomes a variant with its own price, stock, SKU and barcode.</p>
         <div id="variant-options" class="space-y-3"></div>
-        <button type="button" id="add-option" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Add option like size or color</button>
+        <button type="button" id="add-option" class="btn btn-secondary btn-sm"><i class="fa-solid fa-plus"></i> Add option (size, color…)</button>
         <div id="variant-rows"></div>
       </div>
 
@@ -683,7 +720,7 @@ export function openProductModal(product = null) {
   el.querySelector('#f-barcode-gen').addEventListener('click', () => { el.querySelector('#f-barcode').value = generateBarcode(); });
   el.querySelector('#add-option').addEventListener('click', () => {
     optionsState.forEach((o) => { o.editing = false; });
-    optionsState.push({ name: '', values: [], editing: true });
+    optionsState.push({ name: ['Size', 'Color', 'Material'].find((n) => !optionsState.some((o) => o.name.toLowerCase() === n.toLowerCase())) ?? '', values: [], editing: true });
     renderOptionsEditor();
     el.querySelector(`#opt-${optionsState.length - 1}-name`)?.focus();
   });
