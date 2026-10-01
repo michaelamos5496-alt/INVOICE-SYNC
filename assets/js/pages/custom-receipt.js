@@ -1,8 +1,9 @@
 /**
  * custom-receipt.js — a receipt you fill in by hand: any customer, items, prices, date and notes. It is NOT a
- * sale — nothing is saved, stock isn't touched and it never appears in Sales or Reports. Use it for a quote
- * copy, a receipt for an off-system payment, or re-issuing one to a customer. Print it, save it as a PDF, or
- * share it (WhatsApp, email, iMessage).
+ * sale — stock isn't touched and it never appears in Sales or Reports. Use it for a receipt for an off-system
+ * payment, or re-issuing one to a customer. Receipts are saved with a running number (R-0001…), shared across
+ * devices, and can be reopened, edited, duplicated or deleted from the history. Print one, download it as a PDF,
+ * or share it (WhatsApp, email, iMessage). Printing or sharing an unsaved receipt saves it first.
  */
 import { api } from '../services/api.service.js';
 import { getSettings, getBrandName } from '../services/settings.service.js';
@@ -11,6 +12,7 @@ import { modal } from '../components/modal.js';
 import { toast } from '../components/toast.js';
 import { formatCurrency } from '../utils/formatters.js';
 import { escapeHTML } from '../utils/helpers.js';
+import { listReceipts, nextReceiptNumber, saveReceipt, deleteReceipt, computeReceiptTotals } from '../services/receipts.service.js';
 import { htmlToPdfBlob, downloadBlob, sharePdfBlob } from '../utils/pdf.js';
 
 const PAYMENT_METHODS = ['Cash', 'Card', 'Mobile Money', 'Bank Transfer', 'Other'];
@@ -25,21 +27,14 @@ const RECEIPT_CSS = `<style>
 
 const pad = (n) => String(n).padStart(2, '0');
 const localInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-const newNumber = () => { const d = new Date(); return `R-${String(d.getFullYear()).slice(2)}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${Math.floor(1000 + Math.random() * 9000)}`; };
 
-function totals(d) {
-  const subtotal = d.items.reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.price) || 0), 0);
-  const discount = Math.min(subtotal, Math.max(0, Number(d.discount) || 0));
-  const tax = (subtotal - discount) * ((Number(d.taxPercent) || 0) / 100);
-  const total = subtotal - discount + tax;
-  const paid = d.paid === '' || d.paid == null ? null : Number(d.paid) || 0;
-  return { subtotal, discount, tax, total, paid, balance: paid == null ? null : paid - total };
-}
+const totals = (d) => computeReceiptTotals(d);
 
 /** The receipt itself — used for the live preview, printing and the PDF. Everything typed is escaped. */
 function receiptHTML(d) {
   const s = getSettings();
   const t = totals(d);
+  const cur = (n) => formatCurrency(n, d.currency || undefined);
   const items = d.items.filter((i) => i.name.trim() || Number(i.price));
   const when = d.date ? new Date(d.date) : new Date();
   const line = (a, b, cls = '') => `<div class="row ${cls}"><span>${a}</span><span>${b}</span></div>`;
@@ -56,26 +51,30 @@ function receiptHTML(d) {
     ${d.phone.trim() ? line('Phone', escapeHTML(d.phone.trim())) : ''}
     ${d.servedBy.trim() ? line('Served by', escapeHTML(d.servedBy.trim())) : ''}
     <hr />
-    <table>${items.length ? items.map((i) => `<tr><td>${escapeHTML(i.name || 'Item')}<div class="m">${Number(i.qty) || 0} × ${formatCurrency(Number(i.price) || 0)}</div></td><td class="r">${formatCurrency((Number(i.qty) || 0) * (Number(i.price) || 0))}</td></tr>`).join('') : '<tr><td class="m">No items yet</td><td></td></tr>'}</table>
+    <table>${items.length ? items.map((i) => `<tr><td>${escapeHTML(i.name || 'Item')}<div class="m">${Number(i.qty) || 0} × ${cur(Number(i.price) || 0)}</div></td><td class="r">${cur((Number(i.qty) || 0) * (Number(i.price) || 0))}</td></tr>`).join('') : '<tr><td class="m">No items yet</td><td></td></tr>'}</table>
     <hr />
-    ${line('Subtotal', formatCurrency(t.subtotal))}
-    ${t.discount ? line('Discount', `− ${formatCurrency(t.discount)}`) : ''}
-    ${t.tax ? line(`Tax (${Number(d.taxPercent)}%)`, formatCurrency(t.tax)) : ''}
-    ${line('TOTAL', formatCurrency(t.total), 'tot')}
+    ${line('Subtotal', cur(t.subtotal))}
+    ${t.discount ? line('Discount', `− ${cur(t.discount)}`) : ''}
+    ${t.tax ? line(`Tax (${Number(d.taxPercent)}%)`, cur(t.tax)) : ''}
+    ${line('TOTAL', cur(t.total), 'tot')}
     <hr />
     ${line('Paid via', escapeHTML(d.method))}
-    ${t.paid != null ? line('Amount paid', formatCurrency(t.paid)) : ''}
-    ${t.paid != null && t.balance > 0 ? line('Change', formatCurrency(t.balance)) : ''}
-    ${t.paid != null && t.balance < 0 ? line('Balance due', formatCurrency(-t.balance)) : ''}
+    ${t.paid != null ? line('Amount paid', cur(t.paid)) : ''}
+    ${t.paid != null && t.balance > 0 ? line('Change', cur(t.balance)) : ''}
+    ${t.paid != null && t.balance < 0 ? line('Balance due', cur(-t.balance)) : ''}
     ${d.notes.trim() ? `<hr /><div class="m">${escapeHTML(d.notes.trim()).replace(/\n/g, '<br>')}</div>` : ''}
     <hr /><div class="c">${escapeHTML(d.footer || '')}</div>
   </div>`;
 }
 
-export async function openCustomReceipt() {
-  const [customers, products] = await Promise.all([api.customers.list(), api.products.list()]);
-  const d = {
-    title: 'Receipt', number: newNumber(), date: localInput(new Date()), customer: '', phone: '', servedBy: getActorName?.() ?? '',
+/** Opens the receipt maker — blank, or loaded from a saved receipt (`existing`) to view, edit or reprint it. */
+export async function openCustomReceipt(existing = null) {
+  const [customers, products, nextNumber] = await Promise.all([api.customers.list(), api.products.list(), existing ? null : nextReceiptNumber()]);
+  const d = existing ? {
+    ...existing, date: existing.date ?? localInput(new Date()),
+    items: existing.items.map((i) => ({ ...i })), discount: existing.discount || '', taxPercent: existing.taxPercent || '', paid: existing.paid ?? '',
+  } : {
+    id: null, title: 'Receipt', number: nextNumber, date: localInput(new Date()), customer: '', phone: '', servedBy: getActorName?.() ?? '',
     items: [{ name: '', qty: 1, price: '' }], discount: '', taxPercent: '', method: 'Cash', paid: '', notes: '',
     footer: 'Thank you for shopping with us!',
   };
@@ -83,10 +82,13 @@ export async function openCustomReceipt() {
   const inp = (key, attrs = '') => `<input class="input" data-k="${key}" value="${escapeHTML(d[key] ?? '')}" ${attrs} />`;
 
   const el = modal.open({
-    title: 'Custom Receipt',
+    title: d.id ? `Receipt ${escapeHTML(d.number)}` : 'Custom Receipt',
     size: 'xl',
     bodyHTML: `
-      <p class="text-sm text-[var(--text-secondary)] mb-4">Make a receipt without recording a sale — nothing is saved, and stock and reports are not affected.</p>
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <p class="text-sm text-[var(--text-secondary)]">Receipts are saved with their own number. They are not sales — stock and reports are not affected.</p>
+        <button type="button" id="cr-history" class="btn btn-secondary btn-sm"><i class="fa-solid fa-clock-rotate-left"></i> Saved receipts</button>
+      </div>
       <div class="grid lg:grid-cols-5 gap-6">
         <div class="lg:col-span-3 space-y-4">
           <div class="grid sm:grid-cols-2 gap-3">
@@ -114,10 +116,10 @@ export async function openCustomReceipt() {
           <div class="grid sm:grid-cols-3 gap-3">
             ${field('Discount (amount)', inp('discount', 'type="number" min="0" step="any" inputmode="decimal"'))}
             ${field('Tax %', inp('taxPercent', 'type="number" min="0" max="100" step="any" inputmode="decimal"'))}
-            ${field('Payment method', `<select class="input" data-k="method">${PAYMENT_METHODS.map((m) => `<option>${m}</option>`).join('')}</select>`)}
+            ${field('Payment method', `<select class="input" data-k="method">${PAYMENT_METHODS.map((m) => `<option ${m === d.method ? 'selected' : ''}>${m}</option>`).join('')}</select>`)}
             ${field('Amount paid (optional)', inp('paid', 'type="number" min="0" step="any" inputmode="decimal"'), 'sm:col-span-3')}
           </div>
-          ${field('Notes', '<textarea class="input" rows="2" data-k="notes" placeholder="Optional — shown on the receipt"></textarea>')}
+          ${field('Notes', `<textarea class="input" rows="2" data-k="notes" placeholder="Optional — shown on the receipt">${escapeHTML(d.notes ?? '')}</textarea>`)}
           ${field('Footer message', inp('footer'))}
         </div>
 
@@ -128,6 +130,7 @@ export async function openCustomReceipt() {
       </div>`,
     footerHTML: `
       <button class="btn btn-secondary" data-modal-close type="button">Close</button>
+      <button class="btn btn-secondary" id="cr-save" type="button"><i class="fa-solid fa-floppy-disk"></i> ${d.id ? 'Save changes' : 'Save'}</button>
       <button class="btn btn-secondary" id="cr-print" type="button"><i class="fa-solid fa-print"></i> Print</button>
       <button class="btn btn-secondary" id="cr-pdf" type="button"><i class="fa-solid fa-file-pdf"></i> Download PDF</button>
       <button class="btn btn-primary" id="cr-share" type="button"><i class="fa-solid fa-share-nodes"></i> Share</button>`,
@@ -164,30 +167,106 @@ export async function openCustomReceipt() {
     drawItems(); draw();
   });
 
-  const guard = () => {
-    if (!d.items.some((i) => i.name.trim() && Number(i.price) >= 0 && Number(i.qty) > 0)) { toast.danger('Add at least one item with a description and quantity.'); return false; }
-    return true;
-  };
   const fileName = () => `${(d.title || 'receipt').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${d.number}.pdf`;
-  const busy = async (btn, fn) => {
-    if (!guard()) return;
-    btn.disabled = true;
-    try { return await fn(); } catch (err) { toast.danger(err.message); } finally { btn.disabled = false; }
-  };
   const makePdf = () => htmlToPdfBlob({ styleHTML: RECEIPT_CSS, bodyHTML: receiptHTML(d), widthMm: 80, marginMm: 4 });
 
+  /** Saves (creates or updates) and keeps the form on the saved record. */
+  const persist = async () => {
+    const saved = await saveReceipt(d, getActorName());
+    d.id = saved.id; d.number = saved.number; d.currency = saved.currency;
+    el.querySelector('[data-k="number"]').value = d.number;
+    el.querySelector('#modal-title').textContent = `Receipt ${d.number}`;
+    return saved;
+  };
+  const busy = async (btn, fn, { save = false } = {}) => {
+    btn.disabled = true;
+    try {
+      if (save) await persist(); // issuing a receipt records it
+      return await fn();
+    } catch (err) { toast.danger(err.message); } finally { btn.disabled = false; }
+  };
+
+  el.querySelector('#cr-save').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+    const wasNew = !d.id;
+    await persist();
+    toast.success(wasNew ? `Saved as ${d.number}.` : `${d.number} updated.`);
+  }));
+  el.querySelector('#cr-history').addEventListener('click', () => openReceiptHistory());
   el.querySelector('#cr-print').addEventListener('click', (e) => busy(e.currentTarget, async () => {
     const win = window.open('', '_blank');
     if (!win) throw new Error('Allow pop-ups for this site to print.');
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeHTML(d.title || 'Receipt')}</title>${RECEIPT_CSS}<style>body{margin:0;max-width:80mm}@page{margin:4mm}</style></head><body>${receiptHTML(d)}<script>onload=()=>setTimeout(()=>print(),200)<\/script></body></html>`);
     win.document.close();
-  }));
-  el.querySelector('#cr-pdf').addEventListener('click', (e) => busy(e.currentTarget, async () => downloadBlob(await makePdf(), fileName())));
+  }, { save: true }));
+  el.querySelector('#cr-pdf').addEventListener('click', (e) => busy(e.currentTarget, async () => downloadBlob(await makePdf(), fileName()), { save: true }));
   el.querySelector('#cr-share').addEventListener('click', (e) => busy(e.currentTarget, async () => {
     const r = await sharePdfBlob(await makePdf(), fileName(), { title: `${d.title || 'Receipt'} ${d.number}`, text: `${getBrandName()} — ${d.title || 'receipt'} ${d.number}` });
     if (r === 'downloaded') toast.info('Sharing isn\'t supported here, so the PDF was downloaded — attach it in WhatsApp or email.');
-  }));
+  }, { save: true }));
 
   drawItems();
   draw();
+}
+
+// ---------------------------------------------------------------------
+// Saved receipts
+// ---------------------------------------------------------------------
+export async function openReceiptHistory() {
+  const receipts = await listReceipts();
+  const rowHTML = (r) => `
+    <tr data-rid="${r.id}">
+      <td class="py-2 pr-3 font-mono font-medium whitespace-nowrap">${escapeHTML(r.number)}</td>
+      <td class="py-2 pr-3">${escapeHTML(r.customer || 'Walk-in customer')}<div class="text-xs text-[var(--text-muted)]">${escapeHTML(r.title)}</div></td>
+      <td class="py-2 pr-3 whitespace-nowrap text-sm">${escapeHTML(new Date(r.date).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }))}</td>
+      <td class="py-2 pr-3 text-right whitespace-nowrap font-medium">${formatCurrency(r.total, r.currency)}</td>
+      <td class="py-2 text-right whitespace-nowrap">
+        <button type="button" class="btn btn-ghost btn-sm" data-open="${r.id}" aria-label="Open ${escapeHTML(r.number)}"><i class="fa-solid fa-eye"></i></button>
+        <button type="button" class="btn btn-ghost btn-sm" data-dup="${r.id}" aria-label="Duplicate ${escapeHTML(r.number)}"><i class="fa-solid fa-copy"></i></button>
+        <button type="button" class="btn btn-ghost btn-sm" data-del="${r.id}" aria-label="Delete ${escapeHTML(r.number)}"><i class="fa-solid fa-trash-can"></i></button>
+      </td>
+    </tr>`;
+
+  const el = modal.open({
+    title: 'Saved Receipts',
+    size: 'lg',
+    bodyHTML: `
+      <div class="flex flex-wrap items-center gap-3 mb-3">
+        <input id="rh-search" class="input flex-1 min-w-[12rem]" placeholder="Search by number, customer or title…" aria-label="Search receipts" />
+        <button type="button" id="rh-new" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> New receipt</button>
+      </div>
+      <div class="overflow-x-auto"><table class="w-full text-left"><tbody id="rh-rows"></tbody></table></div>
+      <p id="rh-empty" class="text-sm text-[var(--text-muted)] py-6 text-center" hidden>No saved receipts yet. Make one and press Save.</p>`,
+    footerHTML: '<button class="btn btn-secondary" data-modal-close type="button">Close</button>',
+  });
+
+  let list = receipts;
+  const draw = () => {
+    const q = el.querySelector('#rh-search').value.trim().toLowerCase();
+    const shown = list.filter((r) => !q || `${r.number} ${r.customer} ${r.title}`.toLowerCase().includes(q));
+    el.querySelector('#rh-rows').innerHTML = shown.map(rowHTML).join('');
+    const empty = el.querySelector('#rh-empty');
+    empty.hidden = shown.length > 0;
+    empty.textContent = list.length ? 'No receipts match that search.' : 'No saved receipts yet. Make one and press Save.';
+  };
+  draw();
+  el.querySelector('#rh-search').addEventListener('input', draw);
+  el.querySelector('#rh-new').addEventListener('click', () => { modal.close(); openCustomReceipt(); });
+  el.querySelector('#rh-rows').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const find = (id) => list.find((r) => r.id === id);
+    if (btn.dataset.open) { modal.close(); openCustomReceipt(find(btn.dataset.open)); }
+    if (btn.dataset.dup) {
+      const { id, number, createdAt, updatedAt, ...rest } = find(btn.dataset.dup);
+      modal.close();
+      openCustomReceipt({ ...rest, id: null, number: await nextReceiptNumber(), date: localInput(new Date()) });
+    }
+    if (btn.dataset.del) {
+      const r = find(btn.dataset.del);
+      const ok = await modal.confirm({ title: `Delete ${r.number}?`, message: 'This removes the saved receipt. It can\'t be undone.', confirmLabel: 'Delete', danger: true });
+      if (!ok) return;
+      try { await deleteReceipt(r.id, getActorName()); toast.success(`${r.number} deleted.`); } catch (err) { toast.danger(err.message); return; }
+      openReceiptHistory();
+    }
+  });
 }

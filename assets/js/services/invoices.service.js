@@ -40,13 +40,16 @@ export function effectiveStatus(invoice, now = new Date()) {
   return endOfDueDate < now ? INVOICE_STATUS.OVERDUE : INVOICE_STATUS.SENT;
 }
 
+/** The invoices collection also holds saved custom receipts (see receipts.service.js); they are not invoices. */
+const isInvoice = (record) => record.kind !== 'receipt';
+
 export async function listInvoices() {
-  return api.invoices.list();
+  return api.invoices.list(isInvoice);
 }
 
 /** Next sequential number, e.g. INV-0007. Based on the highest existing number, so deletions never cause reuse collisions with later invoices. */
 async function nextInvoiceNumber() {
-  const all = await api.invoices.list();
+  const all = await listInvoices();
   const highest = all.reduce((max, inv) => Math.max(max, Number(String(inv.number ?? '').replace(/\D/g, '')) || 0), 0);
   return `INV-${String(highest + 1).padStart(4, '0')}`;
 }
