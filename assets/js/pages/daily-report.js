@@ -26,8 +26,8 @@ function buildHTML(r) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Daily Report · ${escapeHTML(dateLong)}</title>
 <style>
   *{box-sizing:border-box} body{font:13px/1.45 -apple-system,Inter,Segoe UI,sans-serif;color:#1f2430;margin:0;padding:32px;max-width:900px;margin:auto}
-  header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #4f46e5;padding-bottom:12px;margin-bottom:20px}
-  h1{font-size:22px;margin:0} h2{font-size:14px;margin:26px 0 8px;text-transform:uppercase;letter-spacing:.05em;color:#4f46e5}
+  header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0d9488;padding-bottom:12px;margin-bottom:20px}
+  h1{font-size:22px;margin:0} h2{font-size:14px;margin:26px 0 8px;text-transform:uppercase;letter-spacing:.05em;color:#0d9488}
   .muted{color:#6b7280}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
   .stat{border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px}.k{font-size:11px;color:#6b7280;text-transform:uppercase}.v{font-size:18px;font-weight:700;margin-top:2px}
   table{width:100%;border-collapse:collapse}th{text-align:left;font-size:11px;text-transform:uppercase;color:#6b7280;border-bottom:1px solid #d1d5db;padding:6px 8px}

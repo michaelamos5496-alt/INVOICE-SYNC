@@ -8,8 +8,8 @@ export function getChartColors() {
   const read = (name, fallback) => styles.getPropertyValue(name).trim() || fallback;
 
   return {
-    primary: read('--color-primary-500', '#6366f1'),
-    primaryFaint: 'color-mix(in srgb, ' + read('--color-primary-500', '#6366f1') + ' 18%, transparent)',
+    primary: read('--color-primary-500', '#14b8a6'),
+    primaryFaint: 'color-mix(in srgb, ' + read('--color-primary-500', '#14b8a6') + ' 18%, transparent)',
     success: read('--color-success-500', '#10b981'),
     warning: read('--color-warning-500', '#f59e0b'),
     danger: read('--color-danger-500', '#ef4444'),
