@@ -1,4 +1,4 @@
-# InvSync — Unified Inventory Management System
+# OneDesk — Unified Inventory Management System
 
 A single source of truth for a retail business selling through a physical
 shop and an online store simultaneously. Stock changes on either channel

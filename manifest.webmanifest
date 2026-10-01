@@ -1,6 +1,6 @@
 {
-  "name": "InvSync",
-  "short_name": "InvSync",
+  "name": "OneDesk",
+  "short_name": "OneDesk",
   "description": "Unified inventory management for physical and online retail.",
   "id": "/",
   "start_url": "/pages/dashboard.html",

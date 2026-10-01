@@ -1,4 +1,4 @@
-/* InvSync service worker — makes the app installable and keeps the shell available when the connection drops.
+/* OneDesk service worker — makes the app installable and keeps the shell available when the connection drops.
  * Network first for the app's own files (so a new deploy is always picked up straight away), falling back
  * to the last copy seen. Data calls (Supabase) and other sites are never touched: shop data must always be live. */
 const CACHE = 'invsync-shell-v1';

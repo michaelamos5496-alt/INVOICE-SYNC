@@ -152,7 +152,7 @@ function renderSwitchLinks() {
   const el = $('auth-switch');
   const link = (target, label) => `<button type="button" class="font-semibold text-primary-600 hover:underline" data-switch="${target}">${label}</button>`;
 
-  if (mode === 'signin') el.innerHTML = ALLOW_SIGNUP ? `New to ${escapeHTML(APP_NAME)}? ${link('signup', 'Create an account')}` : 'No account yet? Ask the person who runs InvSync to create one for you.';
+  if (mode === 'signin') el.innerHTML = ALLOW_SIGNUP ? `New to ${escapeHTML(APP_NAME)}? ${link('signup', 'Create an account')}` : 'No account yet? Ask the person who runs OneDesk to create one for you.';
   else if (mode === 'signup') el.innerHTML = `Already have an account? ${link('signin', 'Sign in')}`;
   else if (mode === 'forgot') el.innerHTML = link('signin', '← Back to sign in');
   else if (mode === 'shop') el.innerHTML = `${link('check', 'Check again')} · ${link('signout', 'Sign out')}`;

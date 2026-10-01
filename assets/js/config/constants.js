@@ -2,7 +2,7 @@
  * App-wide constants. Centralized so environment/backend swaps (Phase 10)
  * touch one file instead of scattered magic strings.
  */
-export const APP_NAME = 'InvSync';
+export const APP_NAME = 'OneDesk';
 
 export const STORAGE_KEYS = Object.freeze({
   THEME: 'invsync.theme',
