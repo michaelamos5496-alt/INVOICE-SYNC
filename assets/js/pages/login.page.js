@@ -152,7 +152,7 @@ function renderSwitchLinks() {
   const el = $('auth-switch');
   const link = (target, label) => `<button type="button" class="font-semibold text-primary-600 hover:underline" data-switch="${target}">${label}</button>`;
 
-  if (mode === 'signin') el.innerHTML = ALLOW_SIGNUP ? `New to ${escapeHTML(APP_NAME)}? ${link('signup', 'Create an account')}` : 'No account yet? Contact <a href="mailto:theimagedept5496@gmail.com?subject=Request%20for%20a%20OneDesk%20account&body=Hello%20TheImageDept%2C%0A%0AI%27d%20like%20to%20request%20an%20account%20on%20OneDesk.%0A%0AName%3A%20%0AShop%20name%3A%20%0APhone%3A%20%0A%0AThank%20you." class="font-semibold text-primary-600 hover:underline">One Desk</a> for one.';
+  if (mode === 'signin') el.innerHTML = ALLOW_SIGNUP ? `New to ${escapeHTML(APP_NAME)}? ${link('signup', 'Create an account')}` : 'No account yet? Contact <a href="mailto:theimagedept5496@gmail.com?subject=Request%20for%20a%20OneDesk%20account&body=Hello%20TheImageDept%2C%0A%0AI%27d%20like%20to%20request%20an%20account%20on%20OneDesk.%0A%0AName%3A%20%0AShop%20name%3A%20%0APhone%3A%20%0A%0AThank%20you." class="font-semibold text-primary-600 hover:underline">TheImageDept</a> for one.';
   else if (mode === 'signup') el.innerHTML = `Already have an account? ${link('signin', 'Sign in')}`;
   else if (mode === 'forgot') el.innerHTML = link('signin', '← Back to sign in');
   else if (mode === 'shop') el.innerHTML = `${link('check', 'Check again')} · ${link('signout', 'Sign out')}`;
