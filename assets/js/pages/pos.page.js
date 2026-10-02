@@ -19,6 +19,7 @@ import { renderEmptyState } from '../components/empty-state.js';
 import { formatCurrency, formatDateTime } from '../utils/formatters.js';
 import { debounce, escapeHTML } from '../utils/helpers.js';
 import { openCustomReceipt } from './custom-receipt.js';
+import { paperControlsHTML, bindPaperControls, receiptLogoHTML, printReceipt } from '../utils/receipt-print.js';
 
 let products = [];
 let categories = [];
@@ -335,6 +336,31 @@ function openPaymentModal() {
 // ---------------------------------------------------------------------
 // Receipt
 // ---------------------------------------------------------------------
+/** Plain black-on-white receipt for printing — independent of the app's dark theme. */
+function printableSaleReceipt(sale, customer, withLogo) {
+  const st = getSettings();
+  const line = (a, b, cls = '') => `<div class="row ${cls}"><span>${a}</span><span>${b}</span></div>`;
+  return `<div class="rc">
+    <div class="c">${withLogo ? receiptLogoHTML(st.brandLogo) : ''}<h2>${escapeHTML(getBrandName())}</h2>
+      ${st.storeAddress ? `<div class="m">${escapeHTML(st.storeAddress)}</div>` : ''}
+      ${st.storePhone ? `<div class="m">${escapeHTML(st.storePhone)}</div>` : ''}
+    </div><hr />
+    ${line('Order', `#${sale.id.slice(-6).toUpperCase()}`)}
+    ${line('Date', escapeHTML(formatDateTime(sale.createdAt)))}
+    ${line('Customer', escapeHTML(customer?.name ?? 'Walk-in customer'))}
+    <hr />
+    <table>${sale.items.map((i) => `<tr><td>${escapeHTML(i.name)}<div class="m">${i.quantity} × ${formatCurrency(i.price)}</div></td><td class="r">${formatCurrency(i.price * i.quantity)}</td></tr>`).join('')}</table>
+    <hr />
+    ${line('Subtotal', formatCurrency(sale.subtotal))}
+    ${sale.discountAmount ? line('Discount', `− ${formatCurrency(sale.discountAmount)}`) : ''}
+    ${sale.taxAmount ? line('Tax', formatCurrency(sale.taxAmount)) : ''}
+    ${line('TOTAL', formatCurrency(sale.total), 'tot')}
+    <hr />
+    ${line('Paid via', escapeHTML(String(sale.paymentMethod).replace('_', ' ')))}
+    <hr /><div class="c">Thank you for shopping with us!</div>
+  </div>`;
+}
+
 function openReceiptModal(sale) {
   const customer = customers.find((c) => c.id === sale.customerId);
   const rows = sale.items.map((item) => `
@@ -343,7 +369,7 @@ function openReceiptModal(sale) {
       <td class="py-1 text-sm text-right">${formatCurrency(item.price * item.quantity)}</td>
     </tr>`).join('');
 
-  modal.open({
+  const receiptModal = modal.open({
     title: 'Sale Complete',
     size: 'sm',
     bodyHTML: `
@@ -366,10 +392,23 @@ function openReceiptModal(sale) {
         <p class="text-center text-xs">Thank you for shopping with us!</p>
       </div>`,
     footerHTML: `
+      ${paperControlsHTML('pos', { hasLogo: Boolean(getSettings().brandLogo) })}
       <button class="btn btn-secondary" data-modal-close type="button">Close</button>
       <button class="btn btn-primary" id="print-receipt" type="button"><i class="fa-solid fa-print"></i> Print Receipt</button>
     `,
-  }).querySelector('#print-receipt').addEventListener('click', () => window.print());
+  });
+  const receiptEl = receiptModal;
+  const controls = bindPaperControls(receiptEl, 'pos');
+  receiptEl.querySelector('#print-receipt').addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try {
+      await printReceipt({
+        bodyHTML: printableSaleReceipt(sale, customer, controls.logo()),
+        title: `Receipt ${sale.id.slice(-6).toUpperCase()}`,
+        paper: controls.paper(),
+      });
+    } catch (err) { toast.danger(err.message); } finally { e.currentTarget.disabled = false; }
+  });
 
   toast.success('Sale completed — inventory updated.');
 }

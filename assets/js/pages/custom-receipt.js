@@ -14,16 +14,11 @@ import { formatCurrency } from '../utils/formatters.js';
 import { escapeHTML } from '../utils/helpers.js';
 import { listReceipts, nextReceiptNumber, saveReceipt, deleteReceipt, computeReceiptTotals } from '../services/receipts.service.js';
 import { htmlToPdfBlob, downloadBlob, sharePdfBlob } from '../utils/pdf.js';
+import { RECEIPT_CSS, paperControlsHTML, bindPaperControls, receiptLogoHTML, sizedBody, pdfOptions, printReceipt } from '../utils/receipt-print.js';
 
 const PAYMENT_METHODS = ['Cash', 'Card', 'Mobile Money', 'Bank Transfer', 'Other'];
 
-const RECEIPT_CSS = `<style>
-  .rc{font:12px/1.45 'Courier New',ui-monospace,monospace;color:#111;padding:6px 4px;width:100%}
-  .rc .c{text-align:center}.rc .r{text-align:right}.rc .m{color:#666}.rc h2{font-size:15px;margin:0 0 2px}
-  .rc table{width:100%;border-collapse:collapse}.rc td{padding:2px 0;vertical-align:top}
-  .rc hr{border:0;border-top:1px dashed #999;margin:8px 0}
-  .rc .tot{font-size:14px;font-weight:700}.rc .row{display:flex;justify-content:space-between;gap:8px}
-</style>`;
+
 
 const pad = (n) => String(n).padStart(2, '0');
 const localInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -31,7 +26,7 @@ const localInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.g
 const totals = (d) => computeReceiptTotals(d);
 
 /** The receipt itself — used for the live preview, printing and the PDF. Everything typed is escaped. */
-function receiptHTML(d) {
+function receiptHTML(d, { logo = false } = {}) {
   const s = getSettings();
   const t = totals(d);
   const cur = (n) => formatCurrency(n, d.currency || undefined);
@@ -39,7 +34,7 @@ function receiptHTML(d) {
   const when = d.date ? new Date(d.date) : new Date();
   const line = (a, b, cls = '') => `<div class="row ${cls}"><span>${a}</span><span>${b}</span></div>`;
   return `<div class="rc">
-    <div class="c"><h2>${escapeHTML(getBrandName())}</h2>
+    <div class="c">${logo ? receiptLogoHTML(s.brandLogo) : ''}<h2>${escapeHTML(getBrandName())}</h2>
       ${s.storeAddress ? `<div class="m">${escapeHTML(s.storeAddress)}</div>` : ''}
       ${s.storePhone ? `<div class="m">${escapeHTML(s.storePhone)}</div>` : ''}
       <div style="margin-top:6px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">${escapeHTML(d.title || 'Receipt')}</div>
@@ -131,13 +126,17 @@ export async function openCustomReceipt(existing = null) {
     footerHTML: `
       <button class="btn btn-secondary" data-modal-close type="button">Close</button>
       <button class="btn btn-secondary" id="cr-save" type="button"><i class="fa-solid fa-floppy-disk"></i> ${d.id ? 'Save changes' : 'Save'}</button>
+      ${paperControlsHTML('cr', { hasLogo: Boolean(getSettings().brandLogo) })}
       <button class="btn btn-secondary" id="cr-print" type="button"><i class="fa-solid fa-print"></i> Print</button>
       <button class="btn btn-secondary" id="cr-pdf" type="button"><i class="fa-solid fa-file-pdf"></i> Download PDF</button>
       <button class="btn btn-primary" id="cr-share" type="button"><i class="fa-solid fa-share-nodes"></i> Share</button>`,
   });
 
   const preview = el.querySelector('#cr-preview');
-  const draw = () => { preview.innerHTML = receiptHTML(d); };
+  const controls = bindPaperControls(el, 'cr', { onLogoChange: () => draw() });
+  const logoOn = () => controls.logo();
+  const paper = () => controls.paper();
+  const draw = () => { preview.innerHTML = receiptHTML(d, { logo: logoOn() }); };
 
   const drawItems = () => {
     el.querySelector('#cr-items').innerHTML = d.items.map((it, i) => `
@@ -168,7 +167,7 @@ export async function openCustomReceipt(existing = null) {
   });
 
   const fileName = () => `${(d.title || 'receipt').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${d.number}.pdf`;
-  const makePdf = () => htmlToPdfBlob({ styleHTML: RECEIPT_CSS, bodyHTML: receiptHTML(d), widthMm: 80, marginMm: 4 });
+  const makePdf = () => htmlToPdfBlob({ styleHTML: RECEIPT_CSS, bodyHTML: sizedBody(receiptHTML(d, { logo: logoOn() }), paper()), ...pdfOptions(paper()) });
 
   /** Saves (creates or updates) and keeps the form on the saved record. */
   const persist = async () => {
@@ -193,10 +192,7 @@ export async function openCustomReceipt(existing = null) {
   }));
   el.querySelector('#cr-history').addEventListener('click', () => openReceiptHistory());
   el.querySelector('#cr-print').addEventListener('click', (e) => busy(e.currentTarget, async () => {
-    const win = window.open('', '_blank');
-    if (!win) throw new Error('Allow pop-ups for this site to print.');
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeHTML(d.title || 'Receipt')}</title>${RECEIPT_CSS}<style>body{margin:0;max-width:80mm}@page{margin:4mm}</style></head><body>${receiptHTML(d)}<script>onload=()=>setTimeout(()=>print(),200)<\/script></body></html>`);
-    win.document.close();
+    await printReceipt({ bodyHTML: receiptHTML(d, { logo: logoOn() }), title: d.title || 'Receipt', paper: paper() });
   }, { save: true }));
   el.querySelector('#cr-pdf').addEventListener('click', (e) => busy(e.currentTarget, async () => downloadBlob(await makePdf(), fileName()), { save: true }));
   el.querySelector('#cr-share').addEventListener('click', (e) => busy(e.currentTarget, async () => {

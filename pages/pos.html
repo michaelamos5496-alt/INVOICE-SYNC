@@ -31,14 +31,6 @@
   <link rel="stylesheet" href="/assets/css/components.css" />
   <link rel="stylesheet" href="/assets/css/glass-theme.css" />
 
-  <!-- Receipt printing: hide everything except the receipt content when printing. -->
-  <style>
-    @media print {
-      body * { visibility: hidden; }
-      #receipt-print-area, #receipt-print-area * { visibility: visible; }
-      #receipt-print-area { position: absolute; top: 0; left: 0; width: 100%; padding: 1rem; }
-    }
-  </style>
 </head>
 <body data-page="pos" class="bg-surface-base text-[var(--text-primary)] font-sans antialiased">
   <a href="#main-content" class="skip-link">Skip to main content</a>
