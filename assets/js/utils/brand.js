@@ -27,8 +27,6 @@ export function applyBrand({ title = true } = {}) {
     img.dataset.defaultSrc ??= img.getAttribute('src');
     img.src = logo || img.dataset.defaultSrc;
   });
-  const icon = document.querySelector('link[rel="icon"]');
-  if (icon) { icon.dataset.defaultHref ??= icon.getAttribute('href'); icon.href = logo || icon.dataset.defaultHref; icon.removeAttribute('type'); }
 
   const root = document.documentElement;
   if (typeof backgroundImage === 'string' && backgroundImage.startsWith('data:image/')) {

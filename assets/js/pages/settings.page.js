@@ -82,7 +82,7 @@ function renderStoreProfileForm() {
               <button type="button" id="brand-logo-reset" class="btn btn-ghost btn-sm" ${s.brandLogo ? '' : 'hidden'}>Remove</button>
             </div>
           </div>
-          <p class="field-hint">Square works best. PNG with a transparent background looks cleanest. Shown in the sidebar and browser tab.</p>
+          <p class="field-hint">Square works best. PNG with a transparent background looks cleanest. Shown in the sidebar.</p>
           <input id="brand-logo-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
         </div>
         <div class="card p-4">
