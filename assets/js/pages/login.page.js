@@ -365,7 +365,7 @@ async function submitApplication(event) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
-        name, email, message: message || '(no message)',
+        name, email, message: message || 'Hello TheImageDept, I\'d like to request an account on OneDesk.',
         _subject: `OneDesk account request from ${name}`,
         _replyto: email, _template: 'table', _captcha: 'false',
       }),
