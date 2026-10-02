@@ -16,22 +16,20 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
   <script>
-    if (localStorage.getItem('invsync.theme') === 'dark' ||
-        (!localStorage.getItem('invsync.theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      document.documentElement.classList.add('dark');
-    }
+    document.documentElement.classList.add('dark'); // the glass theme is dark-only
   </script>
 
   <link rel="stylesheet" href="/assets/css/tailwind.css" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
 
   <link rel="stylesheet" href="/assets/css/tokens.css" />
   <link rel="stylesheet" href="/assets/css/main.css" />
   <link rel="stylesheet" href="/assets/css/components.css" />
+  <link rel="stylesheet" href="/assets/css/glass-theme.css" />
 </head>
 <body data-page="activity-logs" class="bg-surface-base text-[var(--text-primary)] font-sans antialiased">
   <a href="#main-content" class="skip-link">Skip to main content</a>

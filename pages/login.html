@@ -23,6 +23,7 @@
     }
   </script>
 
+  <link rel="preload" as="image" href="/assets/img/login-hero.jpg" fetchpriority="high" />
   <link rel="stylesheet" href="/assets/css/tailwind.css" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -43,8 +44,9 @@
     .auth-split { position: relative; min-height: 100vh; min-height: 100dvh; display: grid; grid-template-columns: minmax(380px, 43%) 1fr; overflow: hidden; }
 
     .auth-hero { position: absolute; inset: 0; background:
-        url('/assets/img/login-hero.jpg') 70% center / cover no-repeat,
-        linear-gradient(180deg, #5b8fd6 0%, #8fb4e6 38%, #f0b27a 62%, #1b3a66 63%, #0f2a52 100%); }
+        url('/assets/img/login-hero.jpg') 70% center / cover no-repeat, #0b1b2b;
+        opacity: 0; transition: opacity .8s ease; }
+    .auth-hero.loaded { opacity: 1; }
     .auth-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(8 20 40 / 0.1) 50%, rgb(8 20 40 / 0.7)); }
     .auth-meta { position: absolute; z-index: 2; left: calc(43% + 2.5rem); right: 2.5rem; bottom: 2.25rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; color: #fff; }
     .auth-meta small { display: block; font-size: .6875rem; color: rgb(255 255 255 / .7); margin-bottom: .35rem; }
@@ -93,21 +95,51 @@
     .pw-toggle { position: absolute; right: 0.25rem; top: 50%; transform: translateY(-50%); width: 2.5rem; height: 2.5rem; display: grid; place-items: center; color: rgb(255 255 255 / .6); border-radius: var(--radius-md); }
     .pw-toggle:hover { color: #fff; }
 
+    /* Logo splash: covers the page until login.motion.js plays and removes it (or the failsafe below does). */
+    .auth-splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; align-content: center; gap: 1.25rem; text-align: center;
+        background: radial-gradient(40rem 28rem at 50% 42%, rgb(20 184 166 / .22), transparent 65%), linear-gradient(160deg, #0b1b2b, #16304a); }
+    .auth-splash-mark { position: relative; width: 5.5rem; height: 5.5rem; }
+    .auth-splash-mark img { width: 100%; height: 100%; border-radius: 1.5rem; box-shadow: 0 16px 48px -8px rgb(20 184 166 / .55); }
+    .auth-splash-ring { position: absolute; inset: -.6rem; border-radius: 2rem; border: 1px solid rgb(94 234 212 / .55); }
+    .auth-splash-name { font-family: 'Unbounded', 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 1rem; letter-spacing: .14em; text-transform: uppercase; color: #fff; }
+    .auth-splash-tag { margin-top: .35rem; font-size: .75rem; color: rgb(255 255 255 / .6); }
+    .auth-splash-bar { width: 7rem; height: 2px; border-radius: 2px; background: rgb(255 255 255 / .14); overflow: hidden; }
+    .auth-splash-bar i { display: block; width: 100%; height: 100%; background: var(--color-primary-400); transform-origin: left; transform: scaleX(0); }
+
+    /* Phone: photo fills the top ~42% of the screen; the frosted form panel rises over its lower edge. */
     @media (max-width: 860px) {
-      .auth-split { grid-template-columns: 1fr; }
-      .auth-hero { position: absolute; inset: 0; grid-column: 1; }
+      .auth-split { display: flex; flex-direction: column; }
+      .auth-hero { position: relative; inset: auto; flex: 0 0 42vh; flex-basis: 42dvh; min-height: 14rem; background-position: 62% center; }
+      .auth-hero::after { background: linear-gradient(180deg, rgb(8 20 40 / 0.05) 55%, rgb(11 27 43 / 0.85)); }
       .auth-meta { display: none; }
-      .auth-glass { grid-column: 1; padding: 1.75rem 1.5rem calc(1.5rem + env(safe-area-inset-bottom)); background: linear-gradient(160deg, rgb(20 34 52 / .62), rgb(40 66 98 / .5)); }
-      .auth-main { max-width: none; }
+      .auth-glass { flex: 1; margin-top: -1.75rem; border-radius: 1.75rem 1.75rem 0 0; padding: 1.5rem 1.5rem calc(1.5rem + env(safe-area-inset-bottom));
+        background: linear-gradient(170deg, rgb(26 42 62 / .86), rgb(44 70 100 / .78));
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / .16), 0 -18px 40px -16px rgb(0 0 0 / .5); }
+      .auth-glass::before { display: none; }
+      .auth-mark { width: 3rem; height: 3rem; border-radius: 1rem; }
+      .auth-main { max-width: none; margin-top: 0; padding-top: 1.25rem; }
+      .auth-foot { margin-top: 1.5rem; }
     }
   </style>
 </head>
 <body class="auth-ready text-white font-sans antialiased">
   <a href="#auth-form" class="skip-link">Skip to sign-in form</a>
 
+  <div id="auth-splash" class="auth-splash" role="status" aria-label="Loading OneDesk">
+    <div class="auth-splash-mark">
+      <span class="auth-splash-ring"></span>
+      <img src="/assets/img/favicon.svg" alt="" width="88" height="88" />
+    </div>
+    <div>
+      <p class="auth-splash-name">OneDesk</p>
+      <p class="auth-splash-tag">Unified Inventory Management</p>
+    </div>
+    <div class="auth-splash-bar"><i></i></div>
+  </div>
+
   <main class="auth-split">
     <!-- Full-bleed photo (assets/img/login-hero.jpg) sits behind the frosted panel. -->
-    <div class="auth-hero">
+    <div class="auth-hero" id="auth-hero">
       <div class="auth-meta">
         <div><small>Warehouse</small><strong>Stock &amp; sales</strong></div>
         <div><small>by</small><strong>TheImageDept</strong></div>
@@ -193,8 +225,27 @@
     </section>
   </main>
 
+  <!-- "Contact TheImageDept": posts a fixed request to FormSubmit, which emails it and shows its own human check. -->
+  <form id="contact-form" action="https://formsubmit.co/theimagedept5496@gmail.com" method="POST" target="_blank" hidden>
+    <input type="hidden" name="_subject" value="Request for a OneDesk account" />
+    <input type="hidden" name="message" value="Hello TheImageDept, I'd like to request an account on OneDesk." />
+    <input type="hidden" name="_template" value="box" />
+  </form>
+
   <div id="toast-root"></div>
 
+  <script>
+    // Reveal the photo only once it has loaded, so no placeholder flashes before it.
+    (function () {
+      var hero = document.getElementById('auth-hero'), done = false;
+      function show() { if (!done) { done = true; hero.classList.add('loaded'); } }
+      var img = new Image(); img.onload = img.onerror = show; img.src = '/assets/img/login-hero.jpg';
+      setTimeout(show, 3000);
+      // Failsafe: never leave the splash up if the animation script doesn't run.
+      setTimeout(function () { var sp = document.getElementById('auth-splash'); if (sp) sp.remove(); }, 6000);
+    })();
+  </script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script type="module">
     import { initLoginPage } from '/assets/js/pages/login.page.js';
     initLoginPage();

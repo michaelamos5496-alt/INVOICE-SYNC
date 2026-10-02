@@ -19,6 +19,7 @@ import {
 } from '../services/auth.service.js';
 import { getQueryParam, escapeHTML } from '../utils/helpers.js';
 import { APP_NAME } from '../config/constants.js';
+import { playIntro, animateModeChange, shakeAlert } from './login.motion.js';
 
 const COPY = {
   signin: { title: 'Welcome back', subtitle: 'Sign in to manage your shop.', submit: 'Sign in' },
@@ -41,6 +42,8 @@ let lastCredentials = null; // kept in memory only, so "I've confirmed — conti
 
 export async function initLoginPage() {
   // No shop's name here: the sign-in page belongs to the app, not to whichever shop last used this browser.
+
+  playIntro(); // splash first, then the page animates in (fire-and-forget)
 
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   recovering = hash.get('type') === 'recovery';
@@ -135,6 +138,7 @@ function setMode(next, { keepAlert = false, focus = true } = {}) {
 
   renderSwitchLinks();
   if (!keepAlert) hideAlert();
+  animateModeChange();
   if (focus && !isPanel) (document.querySelector('#auth-form input:not([hidden]):not([type="password"])') ?? $('f-password')).focus?.();
 }
 
@@ -152,11 +156,14 @@ function renderSwitchLinks() {
   const el = $('auth-switch');
   const link = (target, label) => `<button type="button" class="font-semibold text-primary-600 hover:underline" data-switch="${target}">${label}</button>`;
 
-  if (mode === 'signin') el.innerHTML = ALLOW_SIGNUP ? `New to ${escapeHTML(APP_NAME)}? ${link('signup', 'Create an account')}` : 'No account yet? Contact <a href="mailto:theimagedept5496@gmail.com?subject=Request%20for%20a%20OneDesk%20account&body=Hello%20TheImageDept%2C%0A%0AI%27d%20like%20to%20request%20an%20account%20on%20OneDesk.%0A%0AName%3A%20%0AShop%20name%3A%20%0APhone%3A%20%0A%0AThank%20you." class="font-semibold text-primary-600 hover:underline">TheImageDept</a> for one.';
+  if (mode === 'signin') el.innerHTML = ALLOW_SIGNUP ? `New to ${escapeHTML(APP_NAME)}? ${link('signup', 'Create an account')}` : 'No account yet? Contact <button type="button" class="font-semibold text-primary-600 hover:underline" data-contact>TheImageDept</button> for one.';
   else if (mode === 'signup') el.innerHTML = `Already have an account? ${link('signin', 'Sign in')}`;
   else if (mode === 'forgot') el.innerHTML = link('signin', '← Back to sign in');
   else if (mode === 'shop') el.innerHTML = `${link('check', 'Check again')} · ${link('signout', 'Sign out')}`;
   else el.innerHTML = '';
+
+  // One click sends a ready-made request to TheImageDept; the form's own page does the human check.
+  el.querySelector('[data-contact]')?.addEventListener('click', () => $('contact-form').submit());
 
   el.querySelectorAll('[data-switch]').forEach((btn) => btn.addEventListener('click', () => {
     if (btn.dataset.switch === 'check') return recheckShop();
@@ -172,6 +179,7 @@ function showAlert(variant, message, { html = false } = {}) {
   const text = el.querySelector('span');
   if (html) text.innerHTML = message; else text.textContent = message;
   el.hidden = false;
+  if (variant === 'danger') shakeAlert();
 }
 
 function hideAlert() { $('auth-alert').hidden = true; }
