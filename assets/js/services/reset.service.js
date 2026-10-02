@@ -8,7 +8,8 @@
  */
 import { storage } from './storage.service.js';
 import { STORAGE_KEYS } from '../config/constants.js';
-import { seedDemoData } from './seed.service.js';
+import { seedDemoData, buildDemoData } from './seed.service.js';
+import { getSupabase } from './supabase.service.js';
 import { clearAllImages } from './image-store.service.js';
 
 const NON_BUSINESS_KEYS = new Set(['THEME', 'SETTINGS', 'SESSION', 'LEGACY_SEED_MIGRATED']);
@@ -52,4 +53,53 @@ export function migrateLegacyAutoSeed() {
   if (looksLikeOldAutoSeed) clearAllData();
   storage.set(STORAGE_KEYS.LEGACY_SEED_MIGRATED, true);
   return looksLikeOldAutoSeed;
+}
+
+// ---------------------------------------------------------------------
+// Shared-database (CLOUD_SYNC) versions. Owner-only — the Settings page checks that before
+// offering them. Row-level security scopes every query to the signed-in person's own shop.
+// ---------------------------------------------------------------------
+const cloudTable = (storageKey) => storageKey.replace(/^invsync\./, '');
+
+// Tables people may delete from. activity_log and inventory_log are append-only audit trails
+// (schema.sql gives them no delete rule), so they are deliberately not listed.
+const WIPEABLE_TABLES = ['products', 'categories', 'brands', 'suppliers', 'warehouses', 'customers', 'employees',
+  'sales', 'online_orders', 'returns', 'purchase_orders', 'stock_transfers', 'notifications', 'invoices'];
+
+/** Deletes every product, order, customer and so on from the shared database for everyone. Audit trails are kept. */
+export async function clearCloudData() {
+  const client = await getSupabase();
+  for (const table of WIPEABLE_TABLES) {
+    const { error } = await client.from(table).delete().not('id', 'is', null);
+    if (error) throw new Error(`Could not clear ${table.replace(/_/g, ' ')}: ${error.message}`);
+  }
+}
+
+/** True if the shared database already holds any products, sales or customers. */
+export async function cloudHasData() {
+  const client = await getSupabase();
+  for (const table of WIPEABLE_TABLES) {
+    const { count, error } = await client.from(table).select('id', { count: 'exact', head: true });
+    if (error) throw new Error(error.message);
+    if (count) return true;
+  }
+  return false;
+}
+
+/** Adds the sample records to the shared database, table by table, skipping any table that already has rows. */
+export async function loadCloudSampleData() {
+  const client = await getSupabase();
+  let added = 0;
+  for (const [key, records] of Object.entries(buildDemoData())) {
+    if (!records.length) continue;
+    const table = cloudTable(key);
+    const { count, error: countError } = await client.from(table).select('id', { count: 'exact', head: true });
+    if (countError) throw new Error(countError.message);
+    if (count) continue; // never mix sample records into real ones
+    const rows = records.map(({ id, ...data }) => ({ id, data, created_at: data.createdAt ?? new Date().toISOString() }));
+    const { error } = await client.from(table).insert(rows);
+    if (error) throw new Error(`Could not add sample ${table.replace(/_/g, ' ')}: ${error.message}`);
+    added += rows.length;
+  }
+  return added;
 }

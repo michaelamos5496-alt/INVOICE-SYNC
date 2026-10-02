@@ -7,7 +7,7 @@
  */
 import { getSettings, updateSettings, getCurrency, CURRENCIES } from '../services/settings.service.js';
 import { formatCurrency } from '../utils/formatters.js';
-import { clearAllData, loadSampleData, hasAnyData } from '../services/reset.service.js';
+import { clearAllData, loadSampleData, hasAnyData, clearCloudData, loadCloudSampleData, cloudHasData } from '../services/reset.service.js';
 import { initTabs } from '../components/tabs.js';
 import { toast } from '../components/toast.js';
 import { modal } from '../components/modal.js';
@@ -387,11 +387,10 @@ function renderCloudDataForm() {
         </div>
         <button id="upload-local-data" class="btn btn-primary btn-sm" ${local.total ? '' : 'disabled'}><i class="fa-solid fa-cloud-arrow-up"></i> Upload to shared database</button>
       </div>
-      <div class="card p-4">
-        <p class="text-sm font-medium">Clear All Data and Sample Data are switched off</p>
-        <p class="text-xs text-[var(--text-muted)] mt-1">Your data is shared with everyone on the team, so wiping it — or loading example data into it — from one screen could hurt every other person's work. To start over, use your Supabase dashboard (Table Editor).</p>
-      </div>
+      <div id="shared-reset" class="space-y-4"></div>
     </div>`;
+
+  renderSharedReset();
 
   document.getElementById('upload-local-data').addEventListener('click', async () => {
     const ok = await modal.confirm({
@@ -422,6 +421,94 @@ function renderCloudDataForm() {
       modal.close();
       toast.danger(err.message, { duration: 9000 });
     }
+  });
+}
+
+/** Load Sample Data / Clear All Data against the shared database. Owner-only, and both affect everyone on the team. */
+async function renderSharedReset() {
+  const host = document.getElementById('shared-reset');
+  if (!host) return;
+  let isOwner = false;
+  try { isOwner = await amIOwner(); } catch { /* treated as not an owner */ }
+  if (!isOwner) {
+    host.innerHTML = `<div class="card p-4"><p class="text-sm font-medium">Clear All Data and Sample Data</p>
+      <p class="text-xs text-[var(--text-muted)] mt-1">Only the shop owner can wipe or reload the shared data, because it affects everyone on the team.</p></div>`;
+    return;
+  }
+  host.innerHTML = `
+    <div class="card p-4 flex items-center justify-between gap-4">
+      <div>
+        <p class="text-sm font-medium">Load Sample Data</p>
+        <p class="text-xs text-[var(--text-muted)]">Adds example products, sales and customers to the shared database, <strong>visible to everyone on the team</strong>. Only fills collections that are completely empty, so it never mixes into real records.</p>
+      </div>
+      <button id="load-sample-data" class="btn btn-secondary btn-sm shrink-0"><i class="fa-solid fa-flask"></i> Load Sample Data</button>
+    </div>
+    <div class="card p-4 flex items-center justify-between gap-4" style="border-color: color-mix(in srgb, var(--color-danger-500) 30%, transparent)">
+      <div>
+        <p class="text-sm font-medium">Clear All Data</p>
+        <p class="text-xs text-[var(--text-muted)]">Permanently deletes every product, order, customer, supplier, employee record and invoice from the shared database <strong>for everyone on the team</strong>. Staff access, store settings, and the activity and stock-movement history are kept.</p>
+      </div>
+      <button id="clear-all-data" class="btn btn-danger btn-sm shrink-0"><i class="fa-solid fa-trash"></i> Clear All Data</button>
+    </div>`;
+
+  document.getElementById('load-sample-data').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const ok = await modal.confirm({
+      title: 'Load sample data?',
+      message: 'This adds example records to the shared database that everyone on the team will see. Collections that already hold real records are skipped.',
+      confirmLabel: 'Load sample data',
+      danger: false,
+    });
+    if (!ok) return;
+    button.disabled = true;
+    try {
+      const added = await loadCloudSampleData();
+      toast.success(added ? `Added ${added} sample records.` : 'Nothing added — every collection already has data.');
+      if (added) setTimeout(() => window.location.reload(), 800);
+    } catch (err) { toast.danger(err.message, { duration: 9000 }); } finally { button.disabled = false; }
+  });
+
+  document.getElementById('clear-all-data').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    let populated = true;
+    try { populated = await cloudHasData(); } catch { /* let them try anyway */ }
+    if (!populated) { toast.info('There is nothing to clear right now.'); return; }
+    if (!(await confirmByTyping({
+      title: 'Clear ALL shared data?',
+      message: 'This permanently deletes every product, order, customer, supplier, employee record and invoice for <strong>everyone on the team</strong>. It cannot be undone. Staff access, store settings and the activity and stock-movement history are kept.',
+      word: 'DELETE',
+      confirmLabel: 'Clear Everything',
+    }))) return;
+    button.disabled = true;
+    try {
+      await clearCloudData();
+      clearAllData(); // this browser's own leftover copy too
+      toast.success('All shared data cleared.');
+      setTimeout(() => window.location.reload(), 800);
+    } catch (err) { toast.danger(err.message, { duration: 9000 }); } finally { button.disabled = false; }
+  });
+}
+
+/** A confirmation that only enables its button once the exact word has been typed. Resolves true/false. */
+function confirmByTyping({ title, message, word, confirmLabel }) {
+  return new Promise((resolve) => {
+    const el = modal.open({
+      title, size: 'sm',
+      bodyHTML: `<div class="space-y-4">
+        <p class="text-sm text-[var(--text-secondary)]">${message}</p>
+        <div><label class="field-label" for="type-confirm">Type <strong>${word}</strong> to confirm</label>
+        <input id="type-confirm" class="input" type="text" autocomplete="off" spellcheck="false" /></div>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-cancel>Cancel</button>
+          <button type="button" class="btn btn-danger btn-sm" data-go disabled>${confirmLabel}</button>
+        </div></div>`,
+    });
+    const input = el.querySelector('#type-confirm');
+    const go = el.querySelector('[data-go]');
+    input.addEventListener('input', () => { go.disabled = input.value.trim() !== word; });
+    el.querySelector('[data-cancel]').addEventListener('click', () => { modal.close(); resolve(false); });
+    go.addEventListener('click', () => { if (input.value.trim() === word) { modal.close(); resolve(true); } });
+    input.focus();
   });
 }
 

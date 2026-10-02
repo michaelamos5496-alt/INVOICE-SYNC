@@ -93,15 +93,19 @@ const EMPLOYEES = [
   { id: 'emp_efua', name: 'Efua Asante', role: 'Cashier', email: 'efua.a@example.com', status: 'active' },
 ];
 
-export async function seedDemoData() {
-  storage.seedIfEmpty(STORAGE_KEYS.CATEGORIES, CATEGORIES.map((c) => ({ ...c, createdAt: iso(60), updatedAt: iso(60) })));
-  storage.seedIfEmpty(STORAGE_KEYS.BRANDS, BRANDS.map((b) => ({ ...b, createdAt: iso(60), updatedAt: iso(60) })));
-  storage.seedIfEmpty(STORAGE_KEYS.SUPPLIERS, SUPPLIERS.map((s) => ({ ...s, createdAt: iso(60), updatedAt: iso(60) })));
-  storage.seedIfEmpty(STORAGE_KEYS.WAREHOUSES, WAREHOUSES.map((w) => ({ ...w, createdAt: iso(60), updatedAt: iso(60) })));
-  storage.seedIfEmpty(STORAGE_KEYS.CUSTOMERS, CUSTOMERS.map((c) => ({ ...c, createdAt: iso(45), updatedAt: iso(45) })));
-  storage.seedIfEmpty(STORAGE_KEYS.EMPLOYEES, EMPLOYEES.map((e) => ({ ...e, createdAt: iso(90), updatedAt: iso(90) })));
+/** The sample records, keyed by STORAGE_KEYS value, without writing them anywhere. */
+export function buildDemoData() {
+  const data = {};
+  const put = (key, records) => { data[key] = records; };
 
-  storage.seedIfEmpty(
+  put(STORAGE_KEYS.CATEGORIES, CATEGORIES.map((c) => ({ ...c, createdAt: iso(60), updatedAt: iso(60) })));
+  put(STORAGE_KEYS.BRANDS, BRANDS.map((b) => ({ ...b, createdAt: iso(60), updatedAt: iso(60) })));
+  put(STORAGE_KEYS.SUPPLIERS, SUPPLIERS.map((s) => ({ ...s, createdAt: iso(60), updatedAt: iso(60) })));
+  put(STORAGE_KEYS.WAREHOUSES, WAREHOUSES.map((w) => ({ ...w, createdAt: iso(60), updatedAt: iso(60) })));
+  put(STORAGE_KEYS.CUSTOMERS, CUSTOMERS.map((c) => ({ ...c, createdAt: iso(45), updatedAt: iso(45) })));
+  put(STORAGE_KEYS.EMPLOYEES, EMPLOYEES.map((e) => ({ ...e, createdAt: iso(90), updatedAt: iso(90) })));
+
+  put(
     STORAGE_KEYS.PRODUCTS,
     PRODUCTS.map((p, i) => ({
       ...p,
@@ -113,7 +117,7 @@ export async function seedDemoData() {
     })),
   );
 
-  storage.seedIfEmpty(STORAGE_KEYS.NOTIFICATIONS, [
+  put(STORAGE_KEYS.NOTIFICATIONS, [
     { id: 'note_1', type: 'low_stock', title: 'Low stock warning', message: 'Nimbus Smartwatch Series 4 (NIM-WAT-004) has 8 units left (min 10).', severity: 'warning', read: false, createdAt: iso(0, 8), updatedAt: iso(0, 8) },
     { id: 'note_2', type: 'out_of_stock', title: 'Out of stock', message: 'Terra Ceramic Mug Set (4pc) (TER-MUG-014) is now out of stock.', severity: 'danger', read: false, createdAt: iso(0, 6), updatedAt: iso(0, 6) },
     { id: 'note_3', type: 'new_order', title: 'New online order', message: 'Order #ONL-1042 received from Ama Boateng — GHS 249.99.', severity: 'info', read: false, createdAt: iso(0, 4), updatedAt: iso(0, 4) },
@@ -212,11 +216,17 @@ export async function seedDemoData() {
     })),
   );
 
-  storage.seedIfEmpty(STORAGE_KEYS.SALES, sales);
-  storage.seedIfEmpty(STORAGE_KEYS.ONLINE_ORDERS, onlineOrders);
-  storage.seedIfEmpty(STORAGE_KEYS.INVENTORY_LOG, inventoryLog);
-  storage.seedIfEmpty(STORAGE_KEYS.ACTIVITY_LOG, activityLog);
-  storage.seedIfEmpty(STORAGE_KEYS.PURCHASE_ORDERS, []);
-  storage.seedIfEmpty(STORAGE_KEYS.STOCK_TRANSFERS, []);
-  storage.seedIfEmpty(STORAGE_KEYS.RETURNS, []);
+  put(STORAGE_KEYS.SALES, sales);
+  put(STORAGE_KEYS.ONLINE_ORDERS, onlineOrders);
+  put(STORAGE_KEYS.INVENTORY_LOG, inventoryLog);
+  put(STORAGE_KEYS.ACTIVITY_LOG, activityLog);
+  put(STORAGE_KEYS.PURCHASE_ORDERS, []);
+  put(STORAGE_KEYS.STOCK_TRANSFERS, []);
+  put(STORAGE_KEYS.RETURNS, []);
+  return data;
+}
+
+/** Local mode: fills each empty collection in browser storage. Never overwrites existing data. */
+export async function seedDemoData() {
+  Object.entries(buildDemoData()).forEach(([key, records]) => storage.seedIfEmpty(key, records));
 }
