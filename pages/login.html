@@ -27,7 +27,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
 
   <link rel="stylesheet" href="/assets/css/tokens.css" />
@@ -35,85 +35,162 @@
   <link rel="stylesheet" href="/assets/css/components.css" />
 
   <style>
-    .auth-bg {
-      background:
-        radial-gradient(60rem 30rem at 15% -10%, color-mix(in srgb, var(--color-primary-500) 14%, transparent), transparent 60%),
-        radial-gradient(50rem 26rem at 105% 110%, color-mix(in srgb, var(--color-primary-400) 12%, transparent), transparent 60%),
-        var(--surface-base);
-    }
-    .auth-mark { background: linear-gradient(135deg, var(--color-primary-500), var(--color-primary-700)); box-shadow: var(--shadow-lg); }
-    .pw-toggle { position: absolute; right: 0.25rem; top: 50%; transform: translateY(-50%); width: 2.5rem; height: 2.5rem; display: grid; place-items: center; color: var(--text-muted); border-radius: var(--radius-md); }
-    .pw-toggle:hover { color: var(--text-primary); }
+    html, body { height: 100%; }
+    body { background: #0b1b2b; }
     [hidden] { display: none !important; }
+
+    /* Split screen: frosted panel on the left, full-bleed scene on the right. */
+    .auth-split { position: relative; min-height: 100vh; min-height: 100dvh; display: grid; grid-template-columns: minmax(380px, 43%) 1fr; overflow: hidden; }
+
+    .auth-hero { position: relative; grid-column: 2; grid-row: 1; background:
+        url('/assets/img/login-hero.jpg') center / cover no-repeat,
+        linear-gradient(180deg, #5b8fd6 0%, #8fb4e6 38%, #f0b27a 62%, #1b3a66 63%, #0f2a52 100%); }
+    .auth-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(8 20 40 / 0.05), rgb(8 20 40 / 0.35)); }
+    .auth-trees { position: absolute; left: 0; right: 0; bottom: 36%; width: 100%; height: 22%; color: #0a1a2c; opacity: .92; }
+    .auth-meta { position: absolute; z-index: 2; left: 2.5rem; right: 2.5rem; bottom: 2.25rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; color: #fff; }
+    .auth-meta small { display: block; font-size: .6875rem; color: rgb(255 255 255 / .7); margin-bottom: .35rem; }
+    .auth-meta strong { font-size: .75rem; font-weight: 600; }
+
+    .auth-glass { position: relative; z-index: 3; grid-column: 1; grid-row: 1; display: flex; flex-direction: column; padding: 2.5rem 3rem 2rem;
+        color: #fff; background: linear-gradient(160deg, rgb(24 40 60 / .9), rgb(52 84 120 / .78));
+        -webkit-backdrop-filter: blur(28px) saturate(1.2); backdrop-filter: blur(28px) saturate(1.2); }
+    .auth-glass::before { content: ''; position: absolute; top: 0; bottom: 0; right: 0; width: 1px; background: linear-gradient(180deg, transparent, rgb(255 255 255 / .25), transparent); }
+
+    .auth-mark { width: 4.25rem; height: 4.25rem; border-radius: 1.25rem; box-shadow: 0 12px 32px -8px rgb(0 0 0 / .5); }
+    .auth-brand { font-family: 'Unbounded', 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: .8125rem; letter-spacing: .12em; text-transform: uppercase; color: rgb(255 255 255 / .85); }
+    .auth-main { margin-top: auto; padding-top: 2rem; max-width: 26rem; }
+    .auth-step { display: flex; align-items: center; gap: 1.25rem; }
+    .auth-num { font-family: 'Unbounded', sans-serif; font-weight: 600; font-size: 1.5rem; color: rgb(255 255 255 / .28); }
+    .auth-title { font-family: 'Unbounded', 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: clamp(1.5rem, 2.4vw, 2.1rem); line-height: 1.2; letter-spacing: .01em; }
+    .auth-sub { margin-top: .6rem; font-size: .875rem; color: rgb(255 255 255 / .7); }
+    .auth-foot { margin-top: 2.5rem; display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; font-size: .6875rem; color: rgb(255 255 255 / .7); }
+    .auth-foot strong { display: block; color: #fff; font-weight: 600; margin-top: .25rem; }
+    .auth-dots { display: flex; gap: .5rem; margin-top: 1.25rem; }
+    .auth-dots i { width: 5px; height: 5px; border-radius: 50%; border: 1px solid rgb(255 255 255 / .7); }
+    .auth-dots i:first-child { background: #fff; }
+
+    /* Re-skin the shared form controls for the dark glass surface. */
+    .auth-glass .field-label { color: rgb(255 255 255 / .8); }
+    .auth-glass .field-hint { color: rgb(255 255 255 / .6); }
+    .auth-glass .input { background: rgb(255 255 255 / .08); border-color: rgb(255 255 255 / .22); color: #fff; }
+    .auth-glass .input::placeholder { color: rgb(255 255 255 / .4); }
+    .auth-glass .input:focus { background: rgb(255 255 255 / .14); border-color: var(--color-primary-300); box-shadow: 0 0 0 3px rgb(45 212 191 / .25); }
+    .auth-glass .input:-webkit-autofill { -webkit-text-fill-color: #fff; -webkit-box-shadow: 0 0 0 40rem rgb(40 64 92) inset; }
+    .auth-glass .text-primary-600, .auth-glass #auth-switch { color: rgb(255 255 255 / .75); }
+    .auth-glass .text-primary-600 { color: var(--color-primary-300); }
+    .auth-glass .text-\[var\(--text-secondary\)\] { color: rgb(255 255 255 / .75); }
+    .auth-glass .btn-primary { background: var(--color-primary-500); border-color: transparent; color: #04211e; font-weight: 700; }
+    .auth-glass .btn-primary:hover:not(:disabled) { background: var(--color-primary-400); }
+    .auth-glass .btn-secondary, .auth-glass .btn-ghost { background: rgb(255 255 255 / .1); border-color: rgb(255 255 255 / .22); color: #fff; }
+    .auth-glass .btn-ghost { background: transparent; }
+    .auth-glass code { color: var(--color-primary-200); }
+    .auth-glass .alert { background: rgb(0 0 0 / .28); border-color: rgb(255 255 255 / .22); color: #fff; }
+    .auth-glass .alert-danger { border-color: rgb(248 113 113 / .6); }
+    .auth-glass .alert-success { border-color: rgb(52 211 153 / .6); }
+    .pw-toggle { position: absolute; right: 0.25rem; top: 50%; transform: translateY(-50%); width: 2.5rem; height: 2.5rem; display: grid; place-items: center; color: rgb(255 255 255 / .6); border-radius: var(--radius-md); }
+    .pw-toggle:hover { color: #fff; }
+
+    @media (max-width: 860px) {
+      .auth-split { grid-template-columns: 1fr; }
+      .auth-hero { position: absolute; inset: 0; grid-column: 1; }
+      .auth-meta { display: none; }
+      .auth-glass { grid-column: 1; padding: 1.75rem 1.5rem calc(1.5rem + env(safe-area-inset-bottom)); background: linear-gradient(160deg, rgb(20 34 52 / .82), rgb(40 66 98 / .72)); }
+      .auth-main { max-width: none; }
+    }
   </style>
 </head>
-<body class="auth-ready auth-bg text-[var(--text-primary)] font-sans antialiased">
+<body class="auth-ready text-white font-sans antialiased">
   <a href="#auth-form" class="skip-link">Skip to sign-in form</a>
 
-  <main class="min-h-screen grid place-items-center p-4 sm:p-6" style="padding-bottom: max(1rem, env(safe-area-inset-bottom));">
-    <div class="w-full max-w-md route-enter">
-      <div class="text-center mb-6">
-        <img src="/assets/img/favicon.svg" alt="" class="inline-block w-14 h-14 rounded-2xl shadow-lg" width="56" height="56" />
-        <p data-brand-name class="font-display text-2xl font-bold mt-3">OneDesk</p>
-        <p class="text-sm text-[var(--text-secondary)]">Unified Inventory Management</p>
+  <main class="auth-split">
+    <!-- Right: the scene. Drop a photo at /assets/img/login-hero.jpg to replace the gradient. -->
+    <div class="auth-hero" aria-hidden="true">
+      <svg class="auth-trees" viewBox="0 0 800 160" preserveAspectRatio="none" fill="currentColor">
+        <path d="M0 160V120l14-40 14 40 10-30 12 40 12-60 14 60 10-24 14 30 12-70 14 70 12-34 12 40 14-56 14 56 10-26 14 36 12-50 14 50 12-30 14 40 10-64 14 64 14-36 12 30 14-44 12 44 12-24 14 34 12-58 14 58 10-28 14 36 12-46 14 46 12-26 14 40 10-62 14 62 12-30 14 36 12-50 14 50 10-24 14 34 12-56 14 56 12-32 14 40 10-44 14 44 12-26 14 34 12-60 14 60 10-28 14 36 12-48 14 48 12-24 14 30 10-40 14 40V160z"/>
+      </svg>
+      <div class="auth-meta">
+        <div><small>Inventory</small><strong>Stock &amp; sales</strong></div>
+        <div><small>by</small><strong data-brand-name>OneDesk</strong></div>
+        <div><small>Platform</small><strong>Web &amp; Mobile</strong></div>
+      </div>
+    </div>
+
+    <!-- Left: frosted glass panel holding the form. -->
+    <section class="auth-glass route-enter">
+      <div class="flex items-center gap-3">
+        <img src="/assets/img/favicon.svg" alt="" class="auth-mark" width="68" height="68" />
+        <span class="auth-brand" data-brand-name>OneDesk</span>
       </div>
 
-      <div class="card p-6 sm:p-8">
-        <h1 id="auth-title" class="font-display text-xl font-bold">Welcome back</h1>
-        <p id="auth-subtitle" class="text-sm text-[var(--text-secondary)] mt-1">Sign in to manage your shop.</p>
-
-        <div id="auth-alert" class="alert mt-5" role="alert" hidden></div>
-
-        <form id="auth-form" class="mt-5 space-y-4" novalidate>
-          <div data-modes="signup" hidden>
-            <label class="field-label" for="f-name">Full name</label>
-            <input id="f-name" class="input" type="text" autocomplete="name" placeholder="e.g. Ama Boateng" />
+      <div class="auth-main w-full">
+        <div class="auth-step">
+          <span class="auth-num" aria-hidden="true">01</span>
+          <div>
+            <h1 id="auth-title" class="auth-title">Welcome back</h1>
           </div>
+        </div>
+        <p id="auth-subtitle" class="auth-sub">Sign in to manage your shop.</p>
 
-          <div data-modes="signup shop" hidden>
-            <label class="field-label" for="f-shop">Shop name</label>
-            <input id="f-shop" class="input" type="text" autocomplete="organization" maxlength="80" placeholder="e.g. Ama's Boutique" />
-            <p class="field-hint" id="f-shop-hint">This creates your own shop, with its own products, sales and staff. Leave it empty if the shop owner is adding you to their shop.</p>
-          </div>
+    <div id="auth-alert" class="alert mt-5" role="alert" hidden></div>
 
-          <div data-modes="signin signup forgot">
-            <label class="field-label" for="f-email">Email</label>
-            <input id="f-email" class="input" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="you@example.com" />
-          </div>
+    <form id="auth-form" class="mt-5 space-y-4" novalidate>
+      <div data-modes="signup" hidden>
+        <label class="field-label" for="f-name">Full name</label>
+        <input id="f-name" class="input" type="text" autocomplete="name" placeholder="e.g. Ama Boateng" />
+      </div>
 
-          <div data-modes="signin signup recover">
-            <div class="flex items-center justify-between">
-              <label class="field-label" for="f-password" id="f-password-label">Password</label>
-              <button type="button" id="forgot-link" class="text-xs font-semibold text-primary-600 hover:underline mb-1.5" data-modes="signin">Forgot password?</button>
-            </div>
-            <div class="relative">
-              <input id="f-password" class="input pr-11" type="password" autocomplete="current-password" placeholder="••••••••" />
-              <button type="button" class="pw-toggle" data-toggle-password aria-label="Show password" aria-pressed="false"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
-            </div>
-            <p id="pw-hint" class="field-hint" hidden>Use at least 8 characters.</p>
-          </div>
+      <div data-modes="signup shop" hidden>
+        <label class="field-label" for="f-shop">Shop name</label>
+        <input id="f-shop" class="input" type="text" autocomplete="organization" maxlength="80" placeholder="e.g. Ama's Boutique" />
+        <p class="field-hint" id="f-shop-hint">This creates your own shop, with its own products, sales and staff. Leave it empty if the shop owner is adding you to their shop.</p>
+      </div>
 
-          <div data-modes="recover" hidden>
-            <label class="field-label" for="f-confirm">Confirm new password</label>
-            <input id="f-confirm" class="input" type="password" autocomplete="new-password" placeholder="••••••••" />
-          </div>
+      <div data-modes="signin signup forgot">
+        <label class="field-label" for="f-email">Email</label>
+        <input id="f-email" class="input" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="you@example.com" />
+      </div>
 
-          <button id="auth-submit" type="submit" class="btn btn-primary w-full btn-lg" data-modes="signin signup forgot recover shop">
-            <span id="auth-submit-label">Sign in</span>
-          </button>
-        </form>
+      <div data-modes="signin signup recover">
+        <div class="flex items-center justify-between">
+          <label class="field-label" for="f-password" id="f-password-label">Password</label>
+          <button type="button" id="forgot-link" class="text-xs font-semibold text-primary-600 hover:underline mb-1.5" data-modes="signin">Forgot password?</button>
+        </div>
+        <div class="relative">
+          <input id="f-password" class="input pr-11" type="password" autocomplete="current-password" placeholder="••••••••" />
+          <button type="button" class="pw-toggle" data-toggle-password aria-label="Show password" aria-pressed="false"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
+        </div>
+        <p id="pw-hint" class="field-hint" hidden>Use at least 8 characters.</p>
+      </div>
 
-        <!-- Shown instead of the form when someone is signed in but can't use the app yet (mode "verify"). -->
-        <div id="auth-panel" class="mt-5 space-y-3" hidden>
-          <p id="auth-panel-text" class="text-sm text-[var(--text-secondary)]"></p>
-          <button id="panel-primary" type="button" class="btn btn-primary w-full btn-lg"></button>
-          <button id="panel-secondary" type="button" class="btn btn-secondary w-full"></button>
-          <button id="panel-signout" type="button" class="btn btn-ghost w-full"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sign out</button>
+      <div data-modes="recover" hidden>
+        <label class="field-label" for="f-confirm">Confirm new password</label>
+        <input id="f-confirm" class="input" type="password" autocomplete="new-password" placeholder="••••••••" />
+      </div>
+
+      <button id="auth-submit" type="submit" class="btn btn-primary w-full btn-lg" data-modes="signin signup forgot recover shop">
+        <span id="auth-submit-label">Sign in</span>
+      </button>
+    </form>
+
+    <!-- Shown instead of the form when someone is signed in but can't use the app yet (mode "verify"). -->
+    <div id="auth-panel" class="mt-5 space-y-3" hidden>
+      <p id="auth-panel-text" class="text-sm text-[var(--text-secondary)]"></p>
+      <button id="panel-primary" type="button" class="btn btn-primary w-full btn-lg"></button>
+      <button id="panel-secondary" type="button" class="btn btn-secondary w-full"></button>
+      <button id="panel-signout" type="button" class="btn btn-ghost w-full"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sign out</button>
+    </div>
+
+        <p class="text-sm mt-5" id="auth-switch"></p>
+      </div>
+
+      <div class="auth-foot">
+        <div>
+          UI / Inventory
+          <strong>Unified Inventory Management</strong>
+          <div class="auth-dots" aria-hidden="true"><i></i><i></i><i></i></div>
         </div>
       </div>
-
-      <p class="text-center text-sm text-[var(--text-secondary)] mt-5" id="auth-switch"></p>
-    </div>
+    </section>
   </main>
 
   <div id="toast-root"></div>
