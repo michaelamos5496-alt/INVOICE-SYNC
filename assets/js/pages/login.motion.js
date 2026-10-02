@@ -10,29 +10,10 @@ const enabled = !!gsap && !window.matchMedia('(prefers-reduced-motion: reduce)')
 let ready = false; // set once the intro has finished, so mode switches don't fight it
 const HERO_SCALE = 1.06; // resting zoom; leaves headroom so the mouse drift never shows an edge
 
-/** Logo splash: the mark pops in, the wordmark spreads into place, a bar fills, then the whole screen lifts away. */
-function playSplash() {
-  const splash = document.getElementById('auth-splash');
-  if (!splash) return Promise.resolve();
-  if (!enabled) { splash.remove(); return Promise.resolve(); }
-
-  return new Promise((resolve) => {
-    gsap.timeline({ defaults: { ease: 'power3.out' }, onComplete: () => { splash.remove(); resolve(); } })
-      .from('.auth-splash-mark img', { scale: 0.5, opacity: 0, duration: 0.8, ease: 'back.out(1.8)' })
-      .fromTo('.auth-splash-ring', { scale: 0.7, opacity: 0.9 }, { scale: 1.5, opacity: 0, duration: 1.1, ease: 'power2.out' }, 0.25)
-      .from('.auth-splash-name', { opacity: 0, y: 10, letterSpacing: '0.5em', duration: 0.9 }, 0.35)
-      .from('.auth-splash-tag', { opacity: 0, y: 8, duration: 0.6 }, 0.7)
-      .to('.auth-splash-bar i', { scaleX: 1, duration: 1, ease: 'power1.inOut' }, 0.3)
-      .to(splash, { yPercent: -100, duration: 0.7, ease: 'power4.inOut' }, 1.5);
-  });
-}
-
-export async function playIntro() {
-  await playSplash();
-  if (!enabled) { ready = true; return; }
-
-  const tl = gsap.timeline({ defaults: { ease: 'power3.out' }, onComplete: () => { ready = true; initParallax(); } });
-  tl.fromTo('.auth-hero', { scale: 1.2 }, { scale: HERO_SCALE, duration: 2.2, ease: 'power2.out' }, 0)
+/** The page's entrance, as a timeline. Built up front so its starting poses (panel off-screen, fields hidden) are in place before anything is revealed. */
+function buildPageIntro() {
+  return gsap.timeline({ defaults: { ease: 'power3.out' } })
+    .fromTo('.auth-hero', { scale: 1.2 }, { scale: HERO_SCALE, duration: 2.2, ease: 'power2.out' }, 0)
     .from('.auth-glass', { xPercent: -100, duration: 1, ease: 'power4.out' }, 0)
     .from('.auth-glass .auth-mark, .auth-glass .auth-brand', { y: -16, opacity: 0, duration: 0.7, stagger: 0.08 }, 0.55)
     .from('.auth-num', { opacity: 0, x: -12, duration: 0.6 }, 0.7)
@@ -40,6 +21,31 @@ export async function playIntro() {
     .from('#auth-form > :not([hidden]), #auth-panel > :not([hidden])', { y: 20, opacity: 0, duration: 0.6, stagger: 0.09 }, 0.9)
     .from('#auth-switch, .auth-foot', { y: 12, opacity: 0, duration: 0.6, stagger: 0.08 }, 1.2)
     .from('.auth-meta > div', { y: 16, opacity: 0, duration: 0.7, stagger: 0.12 }, 1.3);
+}
+
+/**
+ * Logo splash, then the page. One master timeline: the page intro is already in its starting pose
+ * underneath the splash and starts moving while the splash is still lifting away, so there is never
+ * a frame of the finished (or half-built) page between the two.
+ */
+export function playIntro() {
+  const splash = document.getElementById('auth-splash');
+  if (!enabled) { splash?.remove(); ready = true; return; }
+
+  const master = gsap.timeline({ onComplete: () => { ready = true; initParallax(); } });
+  const LIFT = 1.5;
+
+  if (splash) {
+    master
+      .from('.auth-splash-mark img', { scale: 0.5, opacity: 0, duration: 0.8, ease: 'back.out(1.8)' }, 0)
+      .fromTo('.auth-splash-ring', { scale: 0.7, opacity: 0.9 }, { scale: 1.5, opacity: 0, duration: 1.1, ease: 'power2.out' }, 0.25)
+      .from('.auth-splash-name', { opacity: 0, y: 10, letterSpacing: '0.5em', duration: 0.9, ease: 'power3.out' }, 0.35)
+      .from('.auth-splash-tag', { opacity: 0, y: 8, duration: 0.6, ease: 'power3.out' }, 0.7)
+      .to('.auth-splash-bar i', { scaleX: 1, duration: 1, ease: 'power1.inOut' }, 0.3)
+      .to(splash, { yPercent: -100, duration: 0.7, ease: 'power4.inOut' }, LIFT)
+      .call(() => splash.remove(), null, LIFT + 0.7);
+  }
+  master.add(buildPageIntro(), splash ? LIFT + 0.1 : 0);
 }
 
 /** Cross-fades the heading and fields when the card changes mode (sign in → forgot password, etc.). */
