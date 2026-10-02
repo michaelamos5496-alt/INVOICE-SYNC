@@ -162,8 +162,8 @@ function renderSwitchLinks() {
   else if (mode === 'shop') el.innerHTML = `${link('check', 'Check again')} · ${link('signout', 'Sign out')}`;
   else el.innerHTML = '';
 
-  // One click sends a ready-made request to TheImageDept; the form's own page does the human check.
-  el.querySelector('[data-contact]')?.addEventListener('click', () => $('contact-form').submit());
+  // Opens the small request dialog (see openApplyDialog).
+  el.querySelector('[data-contact]')?.addEventListener('click', openApplyDialog);
 
   el.querySelectorAll('[data-switch]').forEach((btn) => btn.addEventListener('click', () => {
     if (btn.dataset.switch === 'check') return recheckShop();
@@ -306,4 +306,84 @@ async function onSubmit(event) {
   } finally {
     if (!leaving) setBusy(false);
   }
+}
+
+// ---------------------------------------------------------------------
+// "No account yet? Contact TheImageDept" — account-request dialog
+// ---------------------------------------------------------------------
+const APPLY_ENDPOINT = 'https://formsubmit.co/ajax/theimagedept5496@gmail.com';
+let applyBound = false;
+let applyOpenedAt = 0;
+let applyReturnFocus = null;
+
+function openApplyDialog() {
+  bindApplyDialog();
+  applyReturnFocus = document.activeElement;
+  applyOpenedAt = Date.now();
+  $('apply-form').hidden = false;
+  $('apply-done').hidden = true;
+  $('apply-error').hidden = true;
+  $('apply-overlay').hidden = false;
+  $('apply-name').focus();
+}
+
+function closeApplyDialog() {
+  $('apply-overlay').hidden = true;
+  applyReturnFocus?.focus?.();
+}
+
+function bindApplyDialog() {
+  if (applyBound) return;
+  applyBound = true;
+  $('apply-close').addEventListener('click', closeApplyDialog);
+  $('apply-done-close').addEventListener('click', closeApplyDialog);
+  $('apply-overlay').addEventListener('click', (e) => { if (e.target === $('apply-overlay')) closeApplyDialog(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('apply-overlay').hidden) closeApplyDialog(); });
+  $('apply-form').addEventListener('submit', submitApplication);
+}
+
+async function submitApplication(event) {
+  event.preventDefault();
+  const name = $('apply-name').value.trim();
+  const email = $('apply-email').value.trim();
+  const message = $('apply-message').value.trim();
+  const error = $('apply-error');
+  const fail = (text) => { error.textContent = text; error.hidden = false; };
+
+  if (!name) return fail('Please enter your name.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('Please enter a valid contact email.');
+  error.hidden = true;
+
+  // Bots fill the hidden field or submit instantly; pretend it worked and send nothing.
+  if ($('apply-honey').value || Date.now() - applyOpenedAt < 1500) { showApplicationSent(); return; }
+
+  const button = $('apply-submit');
+  button.disabled = true;
+  $('apply-submit-label').textContent = 'Sending…';
+  try {
+    const response = await fetch(APPLY_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        name, email, message: message || '(no message)',
+        _subject: `OneDesk account request from ${name}`,
+        _replyto: email, _template: 'table', _captcha: 'false',
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || String(result.success) === 'false') throw new Error('send failed');
+    showApplicationSent();
+  } catch {
+    fail('Couldn\'t send your application. Check your connection and try again.');
+  } finally {
+    button.disabled = false;
+    $('apply-submit-label').textContent = 'Send application';
+  }
+}
+
+function showApplicationSent() {
+  $('apply-form').reset();
+  $('apply-form').hidden = true;
+  $('apply-done').hidden = false;
+  $('apply-done-close').focus();
 }

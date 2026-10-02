@@ -75,21 +75,21 @@
     .auth-dots i:first-child { background: #fff; }
 
     /* Re-skin the shared form controls for the dark glass surface. */
-    .auth-glass .field-label { color: rgb(255 255 255 / .8); }
+    .auth-glass .field-label, .apply-dialog .field-label { color: rgb(255 255 255 / .8); }
     .auth-glass .field-hint { color: rgb(255 255 255 / .6); }
-    .auth-glass .input { background: rgb(255 255 255 / .08); border-color: rgb(255 255 255 / .22); color: #fff; }
-    .auth-glass .input::placeholder { color: rgb(255 255 255 / .4); }
-    .auth-glass .input:focus { background: rgb(255 255 255 / .14); border-color: var(--color-primary-300); box-shadow: 0 0 0 3px rgb(45 212 191 / .25); }
+    .auth-glass .input, .apply-dialog .input { background: rgb(255 255 255 / .08); border-color: rgb(255 255 255 / .22); color: #fff; }
+    .auth-glass .input::placeholder, .apply-dialog .input::placeholder { color: rgb(255 255 255 / .4); }
+    .auth-glass .input:focus, .apply-dialog .input:focus { background: rgb(255 255 255 / .14); border-color: var(--color-primary-300); box-shadow: 0 0 0 3px rgb(45 212 191 / .25); }
     .auth-glass .input:-webkit-autofill { -webkit-text-fill-color: #fff; -webkit-box-shadow: 0 0 0 40rem rgb(40 64 92) inset; }
     .auth-glass .text-primary-600, .auth-glass #auth-switch { color: rgb(255 255 255 / .75); }
     .auth-glass .text-primary-600 { color: var(--color-primary-300); }
     .auth-glass .text-\[var\(--text-secondary\)\] { color: rgb(255 255 255 / .75); }
-    .auth-glass .btn-primary { background: var(--color-primary-500); border-color: transparent; color: #04211e; font-weight: 700; }
-    .auth-glass .btn-primary:hover:not(:disabled) { background: var(--color-primary-400); }
-    .auth-glass .btn-secondary, .auth-glass .btn-ghost { background: rgb(255 255 255 / .1); border-color: rgb(255 255 255 / .22); color: #fff; }
+    .auth-glass .btn-primary, .apply-dialog .btn-primary { background: var(--color-primary-500); border-color: transparent; color: #04211e; font-weight: 700; }
+    .auth-glass .btn-primary:hover:not(:disabled), .apply-dialog .btn-primary:hover:not(:disabled) { background: var(--color-primary-400); }
+    .auth-glass .btn-secondary, .auth-glass .btn-ghost, .apply-dialog .btn-secondary { background: rgb(255 255 255 / .1); border-color: rgb(255 255 255 / .22); color: #fff; }
     .auth-glass .btn-ghost { background: transparent; }
     .auth-glass code { color: var(--color-primary-200); }
-    .auth-glass .alert { background: rgb(0 0 0 / .28); border-color: rgb(255 255 255 / .22); color: #fff; }
+    .auth-glass .alert, .apply-dialog .alert { background: rgb(0 0 0 / .28); border-color: rgb(255 255 255 / .22); color: #fff; }
     .auth-glass .alert-danger { border-color: rgb(248 113 113 / .6); }
     .auth-glass .alert-success { border-color: rgb(52 211 153 / .6); }
     .pw-toggle { position: absolute; right: 0.25rem; top: 50%; transform: translateY(-50%); width: 2.5rem; height: 2.5rem; display: grid; place-items: center; color: rgb(255 255 255 / .6); border-radius: var(--radius-md); }
@@ -105,6 +105,17 @@
     .auth-splash-tag { margin-top: .35rem; font-size: .75rem; color: rgb(255 255 255 / .6); }
     .auth-splash-bar { width: 7rem; height: 2px; border-radius: 2px; background: rgb(255 255 255 / .14); overflow: hidden; }
     .auth-splash-bar i { display: block; width: 100%; height: 100%; background: var(--color-primary-400); transform-origin: left; transform: scaleX(0); }
+
+    /* Account-request dialog */
+    .apply-overlay { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 1rem; background: rgb(6 12 20 / .6); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+    .apply-dialog { position: relative; width: 100%; max-width: 26rem; max-height: calc(100dvh - 2rem); overflow-y: auto; padding: 1.75rem; border-radius: 1.25rem; color: #fff;
+        background: linear-gradient(160deg, rgb(26 42 62 / .94), rgb(44 70 100 / .9)); border: 1px solid rgb(255 255 255 / .16); box-shadow: 0 30px 80px -20px rgb(0 0 0 / .6); }
+    .apply-title { font-family: 'Unbounded', 'Plus Jakarta Sans', sans-serif; font-weight: 600; font-size: 1.15rem; line-height: 1.3; }
+    .apply-sub { margin-top: .4rem; font-size: .8125rem; color: rgb(255 255 255 / .7); }
+    .apply-x { position: absolute; top: .75rem; right: .75rem; width: 2.25rem; height: 2.25rem; display: grid; place-items: center; border-radius: 999px; color: rgb(255 255 255 / .7); }
+    .apply-x:hover { background: rgb(255 255 255 / .1); color: #fff; }
+    .apply-done { text-align: center; padding: 1.25rem 0 .25rem; }
+    .apply-check { display: inline-grid; place-items: center; width: 3.5rem; height: 3.5rem; margin-bottom: 1rem; border-radius: 999px; background: rgb(20 184 166 / .22); color: var(--color-primary-300); font-size: 1.4rem; }
 
     /* Phone: photo fills the top ~42% of the screen; the frosted form panel rises over its lower edge. */
     @media (max-width: 860px) {
@@ -225,12 +236,34 @@
     </section>
   </main>
 
-  <!-- "Contact TheImageDept": posts a fixed request to FormSubmit, which emails it and shows its own human check. -->
-  <form id="contact-form" action="https://formsubmit.co/theimagedept5496@gmail.com" method="POST" target="_blank" hidden>
-    <input type="hidden" name="_subject" value="Request for a OneDesk account" />
-    <input type="hidden" name="message" value="Hello TheImageDept, I'd like to request an account on OneDesk." />
-    <input type="hidden" name="_template" value="box" />
-  </form>
+  <!-- "Contact TheImageDept": a small request form. It is sent by email through FormSubmit; the visitor only ever sees "Application sent". -->
+  <div id="apply-overlay" class="apply-overlay" hidden>
+    <div class="apply-dialog" role="dialog" aria-modal="true" aria-labelledby="apply-title">
+      <button type="button" id="apply-close" class="apply-x" aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+
+      <form id="apply-form" novalidate>
+        <h2 id="apply-title" class="apply-title">Request an account</h2>
+        <p class="apply-sub">Tell us who you are and we'll get back to you.</p>
+        <div id="apply-error" class="alert alert-danger mt-4" role="alert" hidden></div>
+        <div class="mt-4 space-y-3">
+          <div><label class="field-label" for="apply-name">Name</label>
+            <input id="apply-name" class="input" type="text" autocomplete="name" maxlength="80" placeholder="Your full name" /></div>
+          <div><label class="field-label" for="apply-email">Contact email</label>
+            <input id="apply-email" class="input" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="120" placeholder="you@example.com" /></div>
+          <div><label class="field-label" for="apply-message">Message</label>
+            <textarea id="apply-message" class="input" rows="3" maxlength="800" placeholder="Anything we should know — your shop, what you need…" style="min-height:5.5rem;resize:vertical"></textarea></div>
+          <input id="apply-honey" type="text" name="_honey" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0" />
+        </div>
+        <button id="apply-submit" type="submit" class="btn btn-primary w-full btn-lg mt-5"><span id="apply-submit-label">Send application</span></button>
+      </form>
+
+      <div id="apply-done" class="apply-done" hidden>
+        <span class="apply-check" aria-hidden="true"><i class="fa-solid fa-check"></i></span>
+        <h2 class="apply-title" role="status">Application sent</h2>
+        <button type="button" id="apply-done-close" class="btn btn-secondary mt-5">Close</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast-root"></div>
 
