@@ -8,7 +8,7 @@
  *
  * Text is always set with textContent — a store name is user-typed.
  */
-import { getBrandName } from '../services/settings.service.js';
+import { getBrandName, getSettings } from '../services/settings.service.js';
 import { storage } from '../services/storage.service.js';
 import { STORAGE_KEYS } from '../config/constants.js';
 
@@ -19,6 +19,25 @@ export function applyBrand({ title = true } = {}) {
   const name = getBrandName();
   document.querySelectorAll('[data-brand-name]').forEach((el) => { el.textContent = name; });
   document.querySelectorAll('[data-brand-label]').forEach((el) => { el.setAttribute('aria-label', el.dataset.brandLabel.replace('{name}', name)); });
+
+  // Shop logo and background photo (data: URLs saved in Settings → Store Profile → Branding).
+  const { brandLogo, backgroundImage } = getSettings();
+  const logo = typeof brandLogo === 'string' && brandLogo.startsWith('data:image/') ? brandLogo : '';
+  document.querySelectorAll('[data-brand-logo]').forEach((img) => {
+    img.dataset.defaultSrc ??= img.getAttribute('src');
+    img.src = logo || img.dataset.defaultSrc;
+  });
+  const icon = document.querySelector('link[rel="icon"]');
+  if (icon) { icon.dataset.defaultHref ??= icon.getAttribute('href'); icon.href = logo || icon.dataset.defaultHref; icon.removeAttribute('type'); }
+
+  const root = document.documentElement;
+  if (typeof backgroundImage === 'string' && backgroundImage.startsWith('data:image/')) {
+    root.style.setProperty('--app-bg-image', `url("${backgroundImage}")`);
+    root.dataset.customBg = '';
+  } else {
+    root.style.removeProperty('--app-bg-image');
+    delete root.dataset.customBg;
+  }
 
   if (title) {
     pageTitle ??= document.title.includes(TITLE_SEP) ? document.title.slice(0, document.title.lastIndexOf(TITLE_SEP)) : '';

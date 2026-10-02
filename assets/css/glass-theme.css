@@ -35,8 +35,10 @@ html.dark body::before {
   position: fixed; inset: 0; z-index: -1;
   background:
     linear-gradient(160deg, rgb(14 28 44 / 0.78), rgb(36 62 92 / 0.62)),
-    url('/assets/img/app-bg.jpg') center / cover no-repeat;
+    var(--app-bg-image, url('/assets/img/app-bg.jpg')) center / cover no-repeat;
 }
+/* A photo the owner uploaded isn't pre-blurred like the default, so soften it here. */
+html.dark[data-custom-bg] body::before { filter: blur(10px); transform: scale(1.06); }
 
 /* ---- Wide display type, as on the sign-in page ---- */
 html.dark h1, html.dark .font-wide, html.dark #sidebar [data-brand-name] {

@@ -21,6 +21,8 @@ export const DEFAULT_SETTINGS = {
   storeEmail: '',
   storePhone: '',
   storeAddress: '',
+  brandLogo: '',       // small data: URL of the shop's logo ('' = the OneDesk logo)
+  backgroundImage: '', // data: URL of the app background photo ('' = the default warehouse)
   currency: 'GHS',
   taxRate: 0,
   timezone: 'Africa/Accra',

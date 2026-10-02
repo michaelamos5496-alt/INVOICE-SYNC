@@ -18,6 +18,7 @@ import { INTEGRATIONS, integrationByKey } from '../config/integrations.config.js
 import { integrationsSupported, loadStatuses, connect, testConnection, disconnect, sendTestSms } from '../services/integrations.service.js';
 import { amIOwner } from '../services/staff.service.js';
 import { escapeHTML } from '../utils/helpers.js';
+import { compressImage } from '../utils/image-compress.js';
 
 const TIMEZONES = ['Africa/Accra', 'Africa/Lagos', 'UTC', 'America/New_York', 'Europe/London'];
 
@@ -68,8 +69,40 @@ function renderStoreProfileForm() {
         </select>
       </div>
     </div>
+    <div class="mt-6 pt-5 border-t" style="border-color: var(--border-subtle)">
+      <h3 class="font-display font-semibold text-sm mb-1">Branding</h3>
+      <p class="field-hint mb-4" style="margin-top:0">Upload your logo and choose the photo behind the app. Both apply for everyone on the team as soon as they're saved.</p>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div class="card p-4">
+          <p class="text-sm font-medium mb-3">Brand logo</p>
+          <div class="flex items-center gap-4">
+            <img id="brand-logo-preview" src="${s.brandLogo || '/assets/img/favicon.svg'}" alt="" class="w-16 h-16 rounded-xl object-contain" style="background: var(--surface-sunken)" />
+            <div class="flex flex-wrap gap-2">
+              <button type="button" id="brand-logo-pick" class="btn btn-secondary btn-sm"><i class="fa-solid fa-upload"></i> Upload logo</button>
+              <button type="button" id="brand-logo-reset" class="btn btn-ghost btn-sm" ${s.brandLogo ? '' : 'hidden'}>Remove</button>
+            </div>
+          </div>
+          <p class="field-hint">Square works best. PNG with a transparent background looks cleanest. Shown in the sidebar and browser tab.</p>
+          <input id="brand-logo-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+        </div>
+        <div class="card p-4">
+          <p class="text-sm font-medium mb-3">Background image</p>
+          <div class="flex items-center gap-4">
+            <img id="brand-bg-preview" src="${s.backgroundImage || '/assets/img/app-bg.jpg'}" alt="" class="w-24 h-16 rounded-lg object-cover" />
+            <div class="flex flex-wrap gap-2">
+              <button type="button" id="brand-bg-pick" class="btn btn-secondary btn-sm"><i class="fa-solid fa-image"></i> Choose image</button>
+              <button type="button" id="brand-bg-reset" class="btn btn-ghost btn-sm" ${s.backgroundImage ? '' : 'hidden'}>Use default</button>
+            </div>
+          </div>
+          <p class="field-hint">A wide photo works best. It's darkened and softened behind the glass panels.</p>
+          <input id="brand-bg-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+        </div>
+      </div>
+    </div>
     <button id="save-store-profile" class="btn btn-primary mt-4"><i class="fa-solid fa-check"></i> Save Store Profile</button>
   `;
+
+  wireBrandingPickers();
 
   document.getElementById('save-store-profile').addEventListener('click', () => saveSettings({
     storeName: document.getElementById('f-store-name').value.replace(/\s+/g, ' ').trim(),
@@ -78,6 +111,46 @@ function renderStoreProfileForm() {
     storeAddress: document.getElementById('f-store-address').value.trim(),
     timezone: document.getElementById('f-timezone').value,
   }, 'Store profile saved.'));
+}
+
+const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = () => reject(new Error('Couldn\'t read that image.'));
+  reader.readAsDataURL(blob);
+});
+
+/** Logo and background pickers: each saves as soon as a picture is chosen (both are stored inside the shared settings, so they're kept small). */
+function wireBrandingPickers() {
+  const setup = ({ key, pick, file, reset, preview, defaultSrc, options, label }) => {
+    const input = document.getElementById(file);
+    document.getElementById(pick).addEventListener('click', () => input.click());
+    input.addEventListener('change', async () => {
+      const chosen = input.files?.[0];
+      input.value = '';
+      if (!chosen) return;
+      try {
+        const { blob } = await compressImage(chosen, options);
+        const dataUrl = await blobToDataUrl(blob);
+        await updateSettings({ [key]: dataUrl });
+        document.getElementById(preview).src = dataUrl;
+        document.getElementById(reset).hidden = false;
+        toast.success(`${label} updated.`);
+      } catch (err) { toast.danger(err.message); }
+    });
+    document.getElementById(reset).addEventListener('click', async () => {
+      try {
+        await updateSettings({ [key]: '' });
+        document.getElementById(preview).src = defaultSrc;
+        document.getElementById(reset).hidden = true;
+        toast.success(`${label} reset.`);
+      } catch (err) { toast.danger(err.message); }
+    });
+  };
+  setup({ key: 'brandLogo', pick: 'brand-logo-pick', file: 'brand-logo-file', reset: 'brand-logo-reset', preview: 'brand-logo-preview',
+    defaultSrc: '/assets/img/favicon.svg', options: { maxDimension: 256, quality: 0.92 }, label: 'Logo' });
+  setup({ key: 'backgroundImage', pick: 'brand-bg-pick', file: 'brand-bg-file', reset: 'brand-bg-reset', preview: 'brand-bg-preview',
+    defaultSrc: '/assets/img/app-bg.jpg', options: { maxDimension: 1400, quality: 0.6 }, label: 'Background' });
 }
 
 function renderTaxCurrencyForm() {
