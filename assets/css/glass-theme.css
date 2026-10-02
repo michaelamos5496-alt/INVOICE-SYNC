@@ -47,7 +47,8 @@ html.dark h1, html.dark .font-wide, html.dark #sidebar [data-brand-name] {
   font-weight: 600;
 }
 html.dark h1 { font-size: clamp(1.25rem, 2vw, 1.6rem); line-height: 1.25; }
-html.dark #sidebar [data-brand-name] { font-size: 0.9rem; letter-spacing: 0.1em; text-transform: uppercase; }
+/* Sized so a typical shop name fits in full beside the logo; a long one wraps to a second line rather than being cut off. */
+html.dark #sidebar [data-brand-name] { font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.25; min-width: 0; }
 
 /* ---- Frosted surfaces ---- */
 html.dark .card, html.dark .glass {
