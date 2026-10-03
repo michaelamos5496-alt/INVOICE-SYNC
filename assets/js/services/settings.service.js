@@ -22,6 +22,8 @@ export const DEFAULT_SETTINGS = {
   storePhone: '',
   storeAddress: '',
   brandLogo: '',       // small data: URL of the shop's logo ('' = the OneDesk logo)
+  shopifyLocationId: '', // which Shopify location OneDesk stock is sent to ('' = not chosen yet)
+  shopifyPushStock: false, // send OneDesk stock changes to Shopify
   backgroundImage: '', // data: URL of the app background photo ('' = the default warehouse)
   currency: 'GHS',
   taxRate: 0,

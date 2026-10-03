@@ -548,8 +548,28 @@ are separate features that build on these connections.
 2. **Deploy the checker:** Supabase dashboard → **Edge Functions → Deploy a new function**, name it exactly
    `integrations`, paste the contents of `supabase/functions/integrations/index.ts`, and deploy. (Or with the CLI:
    `supabase functions deploy integrations`.) Supabase supplies its keys to the function automatically.
+   **Redeploy it whenever this file changes** — Shopify product import (Settings → Integrations → Shopify → Sync
+   products) needs the latest version, and the Shopify app needs the `read_products` scope.
    Until this is done, **Connect** still saves the keys but shows *Saved — not verified*.
 3. Open **Settings → Integrations** as the owner and press **Connect** on a provider.
+
+### Shopify two-way sync
+
+Settings → Integrations → Shopify has **Sync products** (import products and variants), and **Two-way sync**:
+
+* **Shopify app scopes** (Shopify admin → Develop apps → your app → Configuration → Admin API): `read_products`,
+  `read_locations`, `read_inventory`, `write_inventory`, `read_orders`. Copy the access token **and** the *API secret key*
+  again, then **Update keys**.
+* **OneDesk → Shopify:** pick the Shopify location and tick "Send OneDesk stock changes to Shopify". Every stock change
+  (till sale, stock count, restock) then updates that location. Only products **without variants** are sent — the till
+  sells a product, not a variant, so a shop sale can't be tied to one variant's count.
+* **Shopify → OneDesk (live orders):** deploy the second function, `supabase/functions/shopify-webhook/index.ts`, named
+  exactly `shopify-webhook` with **Verify JWT switched off** (Shopify can't send one; the function checks Shopify's signature
+  instead) — CLI: `supabase functions deploy shopify-webhook --no-verify-jwt`. Then press **Turn on live orders**. New Shopify
+  orders appear under Online Orders and take their stock off (variants included); cancellations put it back. Orders only
+  match products that were brought in with **Sync products**; unmatched lines are noted on the order and change no stock.
+* Run **Sync products** with "replace stock counts" now and then to correct any drift (a manual change made directly in
+  Shopify's admin isn't announced to OneDesk).
 
 ### Per-provider notes
 

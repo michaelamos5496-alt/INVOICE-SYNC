@@ -72,3 +72,40 @@ export async function disconnect(providerKey) {
 }
 
 export const sendTestSms = (to) => testConnection('hubtel', { action: 'test-sms', to });
+
+/** One page of the connected Shopify store's products (see the "integrations" Edge Function). Owner only. */
+export async function fetchShopifyProductsPage(cursor = null) {
+  const client = await getSupabase();
+  const { data, error } = await client.functions.invoke(FUNCTION_NAME, { body: { action: 'shopify-products', provider: 'shopify', cursor } });
+  if (error) {
+    const status = error.context?.status;
+    if (status === 404 || /not found/i.test(error.message ?? '')) throw new Error('The "integrations" function needs updating before it can read products. Redeploy it from supabase/functions/integrations/index.ts (README → "Integrations").');
+    if (status === 403) throw new Error('Only the shop owner can import from Shopify.');
+    throw new Error('Couldn\'t reach the import service. Check your connection and try again.');
+  }
+  if (!data?.ok) throw new Error(data?.message || 'Shopify import failed.');
+  return data; // { products, nextCursor }
+}
+
+/** Calls one of the Shopify actions of the "integrations" Edge Function and returns its data, or throws a readable message. */
+async function invokeShopify(action, extra = {}) {
+  const client = await getSupabase();
+  const { data, error } = await client.functions.invoke(FUNCTION_NAME, { body: { action, provider: 'shopify', ...extra } });
+  if (error) {
+    const status = error.context?.status;
+    if (status === 404 || /not found/i.test(error.message ?? '')) throw new Error('The "integrations" function needs updating first. Redeploy it from supabase/functions/integrations/index.ts (README → "Integrations").');
+    if (status === 403) throw new Error(action === 'shopify-set-stock' ? 'Sign in as a member of the shop first.' : 'Only the shop owner can do this.');
+    throw new Error('Couldn\'t reach the service. Check your connection and try again.');
+  }
+  if (!data?.ok) throw new Error(data?.message || 'Shopify request failed.');
+  return data;
+}
+
+/** The store's Shopify locations: [{ id, name }]. Owner only. */
+export const fetchShopifyLocations = async () => (await invokeShopify('shopify-locations')).locations;
+
+/** Asks Shopify to send new/cancelled orders to the shopify-webhook function. Owner only. Returns { message, address }. */
+export const registerShopifyWebhooks = () => invokeShopify('shopify-register-webhooks');
+
+/** Sets one item's available stock at one Shopify location. Any signed-in staff member (it runs on every sale). */
+export const pushShopifyStock = ({ inventoryItemId, locationId, quantity }) => invokeShopify('shopify-set-stock', { inventoryItemId, locationId, quantity });

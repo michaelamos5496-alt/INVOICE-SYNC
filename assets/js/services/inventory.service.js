@@ -20,6 +20,7 @@
  */
 import { api, generateId } from './api.service.js';
 import { STOCK_MOVEMENT_TYPES, STOCK_STATUS, CHANNELS } from '../config/constants.js';
+import { CLOUD_SYNC } from '../config/supabase.config.js';
 
 /** Derives stock status from quantity vs. the product's own thresholds. */
 export function computeStockStatus(product) {
@@ -42,7 +43,7 @@ export function computeStockStatus(product) {
  * @param {string} [params.actor]                 User/employee who triggered it.
  * @returns {Promise<{product: object, logEntry: object}>}
  */
-export async function adjustStock({ productId, delta, type, channel, reference = null, note = '', actor = 'system' }) {
+export async function adjustStock({ productId, delta, type, channel, reference = null, note = '', actor = 'system', pushToShopify = true }) {
   return changeStock(productId, (product, previousQuantity) => {
     // A sale that would take stock below zero must fail — with many people selling at once, this check is
     // what stops two of them both getting the last unit. (Other movements clamp at zero as before.)
@@ -50,7 +51,7 @@ export async function adjustStock({ productId, delta, type, channel, reference =
       throw new Error(`Only ${previousQuantity} of ${product.name} left in stock.`);
     }
     return { newQuantity: Math.max(0, previousQuantity + delta), delta, note };
-  }, { type, channel, reference, actor });
+  }, { type, channel, reference, actor, pushToShopify });
 }
 
 /**
@@ -58,7 +59,7 @@ export async function adjustStock({ productId, delta, type, channel, reference =
  * from the CURRENT stored value and runs inside an atomic read-modify-write (api.products.mutate), so
  * simultaneous changes from different screens or people can never overwrite each other.
  */
-async function changeStock(productId, resolve, { type, channel, reference, actor }) {
+async function changeStock(productId, resolve, { type, channel, reference, actor, pushToShopify = true }) {
   let previousQuantity = 0;
   let outcome = { delta: 0, note: '' };
 
@@ -86,6 +87,9 @@ async function changeStock(productId, resolve, { type, channel, reference, actor
   });
 
   await maybeNotifyThreshold(updated);
+
+  // Tell Shopify the new count (when two-way sync is on). Lazy-loaded, never awaited: a slow Shopify must not slow a sale.
+  if (CLOUD_SYNC && pushToShopify) import('./shopify-push.service.js').then((m) => m.pushProductStock(updated)).catch(() => {});
 
   return { product: updated, logEntry };
 }
@@ -138,12 +142,12 @@ export async function restockFromReturn({ productId, quantity, returnId, channel
 }
 
 /** Manual stock-take correction (can be positive or negative). */
-export async function applyStockCount({ productId, countedQuantity, actor }) {
+export async function applyStockCount({ productId, countedQuantity, actor, pushToShopify = true }) {
   return changeStock(productId, (product, previousQuantity) => ({
     newQuantity: countedQuantity,
     delta: countedQuantity - previousQuantity,
     note: `Stock count correction: ${previousQuantity} -> ${countedQuantity}`,
-  }), { type: STOCK_MOVEMENT_TYPES.STOCK_COUNT, channel: CHANNELS.PHYSICAL, reference: null, actor });
+  }), { type: STOCK_MOVEMENT_TYPES.STOCK_COUNT, channel: CHANNELS.PHYSICAL, reference: null, actor, pushToShopify });
 }
 
 /**

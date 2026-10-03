@@ -90,6 +90,96 @@ const CHECKS = {
   },
 };
 
+/**
+ * One page (up to 250) of the store's products with their variants, trimmed to what OneDesk imports.
+ * Shopify pages with an opaque cursor (`page_info`) taken from the response's Link header, so the website
+ * calls this repeatedly, passing back `nextCursor`, until it comes back null.
+ * Needs the app's `read_products` scope. Stock is each variant's total across locations.
+ */
+async function listShopifyProducts({ settings, secrets }, fetcher, cursor) {
+  const domain = String(settings.shopDomain ?? '').toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain)) return { ok: false, message: 'The store address should look like your-store.myshopify.com.' };
+  if (cursor != null && !/^[A-Za-z0-9_\-=%.]{1,2000}$/.test(String(cursor))) return { ok: false, message: 'Bad page cursor.' };
+
+  const query = cursor
+    ? `limit=250&page_info=${encodeURIComponent(String(cursor))}`
+    : 'limit=250&fields=id,title,handle,body_html,vendor,product_type,status,image,options,variants';
+  const response = await fetcher(`https://${domain}/admin/api/${SHOPIFY_API_VERSION}/products.json?${query}`, {
+    redirect: 'manual', signal: AbortSignal.timeout(25000), headers: { 'X-Shopify-Access-Token': secrets.accessToken },
+  });
+  if (response.status === 401 || response.status === 403) return { ok: false, message: 'Shopify rejected the token, or it lacks the read_products permission. Add that scope to the app, then copy the token again.' };
+  if (response.status === 429) return { ok: false, message: 'Shopify asked us to slow down. Wait a few seconds and try again.' };
+  if (response.status !== 200) return { ok: false, message: `Shopify answered with an unexpected error (${response.status}). Try again in a moment.` };
+
+  const body = await response.json();
+  const next = /<[^>]*[?&]page_info=([^&>]+)[^>]*>;\s*rel="next"/.exec(response.headers.get('link') ?? '');
+  const products = (body.products ?? []).map((p) => ({
+    id: String(p.id), handle: p.handle, title: p.title, description: p.body_html ?? '', vendor: p.vendor ?? '', type: p.product_type ?? '',
+    status: p.status, image: p.image?.src ?? null,
+    options: (p.options ?? []).map((o) => ({ name: o.name, values: o.values ?? [] })),
+    variants: (p.variants ?? []).map((v) => ({
+      id: String(v.id), title: v.title, option1: v.option1, option2: v.option2, option3: v.option3,
+      price: v.price, sku: v.sku ?? '', barcode: v.barcode ?? '', stock: Number(v.inventory_quantity) || 0, inventoryItemId: String(v.inventory_item_id ?? ''),
+    })),
+  }));
+  return { ok: true, products, nextCursor: next ? decodeURIComponent(next[1]) : null };
+}
+
+/** Shopify store locations (a store can stock items in several places; OneDesk's count goes to ONE of them). */
+async function listShopifyLocations({ settings, secrets }, fetcher) {
+  const domain = String(settings.shopDomain ?? '').toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain)) return { ok: false, message: 'The store address should look like your-store.myshopify.com.' };
+  const r = await call(fetcher, `https://${domain}/admin/api/${SHOPIFY_API_VERSION}/locations.json`, { headers: { 'X-Shopify-Access-Token': secrets.accessToken } });
+  if (r.status === 401 || r.status === 403) return { ok: false, message: 'Shopify rejected the token, or it lacks the read_locations permission. Add that scope to the app and copy the token again.' };
+  if (r.status !== 200) return { ok: false, message: `Shopify answered with an unexpected error (${r.status}). Try again in a moment.` };
+  return { ok: true, locations: (r.body?.locations ?? []).filter((l) => l.active !== false).map((l) => ({ id: String(l.id), name: l.name })) };
+}
+
+/** Sets one item's available quantity at one location. Needs the app's `write_inventory` scope. */
+async function setShopifyStock({ settings, secrets }, fetcher, { inventoryItemId, locationId, quantity }) {
+  const domain = String(settings.shopDomain ?? '').toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain)) return { ok: false, message: 'The store address should look like your-store.myshopify.com.' };
+  if (!/^\d{1,20}$/.test(String(inventoryItemId ?? '')) || !/^\d{1,20}$/.test(String(locationId ?? ''))) return { ok: false, message: 'Missing Shopify item or location.' };
+  const available = Math.max(0, Math.floor(Number(quantity)));
+  if (!Number.isFinite(available)) return { ok: false, message: 'Bad quantity.' };
+  const r = await call(fetcher, `https://${domain}/admin/api/${SHOPIFY_API_VERSION}/inventory_levels/set.json`, {
+    method: 'POST',
+    headers: { 'X-Shopify-Access-Token': secrets.accessToken, 'content-type': 'application/json' },
+    body: JSON.stringify({ location_id: Number(locationId), inventory_item_id: Number(inventoryItemId), available }),
+  });
+  if (r.status === 200) return { ok: true, message: 'Stock updated in Shopify.' };
+  if (r.status === 401 || r.status === 403) return { ok: false, message: 'Shopify rejected the change. The app needs the write_inventory permission.' };
+  if (r.status === 429) return { ok: false, message: 'Shopify asked us to slow down.' };
+  if (r.status === 422) return { ok: false, message: 'Shopify doesn\'t track that item at that location.' };
+  return { ok: false, message: `Shopify answered with an unexpected error (${r.status}).` };
+}
+
+const WEBHOOK_TOPICS = ['orders/create', 'orders/cancelled'];
+
+/** Asks Shopify to notify the `shopify-webhook` function about new and cancelled orders. Safe to run twice. */
+async function registerShopifyWebhooks({ settings, secrets }, fetcher, address) {
+  const domain = String(settings.shopDomain ?? '').toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain)) return { ok: false, message: 'The store address should look like your-store.myshopify.com.' };
+  if (!secrets.apiSecret) return { ok: false, message: 'Add the API secret key first (Update keys). Shopify signs each order notification with it, and OneDesk uses it to reject fakes.' };
+  const base = `https://${domain}/admin/api/${SHOPIFY_API_VERSION}/webhooks.json`;
+  const headers = { 'X-Shopify-Access-Token': secrets.accessToken, 'content-type': 'application/json' };
+
+  const existing = await call(fetcher, `${base}?limit=250`, { headers });
+  if (existing.status === 401 || existing.status === 403) return { ok: false, message: 'Shopify rejected the token, or it lacks the read_orders permission. Add that scope to the app and copy the token again.' };
+  if (existing.status !== 200) return { ok: false, message: `Shopify answered with an unexpected error (${existing.status}).` };
+  const have = new Set((existing.body?.webhooks ?? []).filter((w) => w.address === address).map((w) => w.topic));
+
+  const added = [];
+  for (const topic of WEBHOOK_TOPICS) {
+    if (have.has(topic)) continue;
+    const r = await call(fetcher, base, { method: 'POST', headers, body: JSON.stringify({ webhook: { topic, address, format: 'json' } }) });
+    if (r.status === 201) added.push(topic);
+    else if (r.status === 401 || r.status === 403) return { ok: false, message: 'Shopify refused to create the notification. The app needs the read_orders permission.' };
+    else if (r.status !== 422) return { ok: false, message: `Shopify couldn't create the "${topic}" notification (${r.status}).` };
+  }
+  return { ok: true, message: added.length ? `Live orders are on. Shopify will now tell OneDesk about new and cancelled orders (${added.length} notification${added.length === 1 ? '' : 's'} added).` : 'Live orders were already on.', address };
+}
+
 async function sendHubtelSms({ settings, secrets }, fetcher, to) {
   const number = String(to ?? '').replace(/[\s()-]/g, '');
   if (!/^\+?\d{9,15}$/.test(number)) return { ok: false, message: 'Enter a phone number with country code, for example +233240000000.' };
@@ -116,7 +206,9 @@ export async function handle(req, deps) {
   let body;
   try { body = await req.json(); } catch { return json(400, { ok: false, message: 'Bad request.' }); }
   const { action, provider } = body ?? {};
-  if (!['test', 'test-sms'].includes(action) || !Object.hasOwn(CHECKS, provider ?? '')) return json(400, { ok: false, message: 'Unknown action or provider.' });
+  const SHOPIFY_ACTIONS = ['shopify-products', 'shopify-locations', 'shopify-register-webhooks', 'shopify-set-stock'];
+  if (!['test', 'test-sms', ...SHOPIFY_ACTIONS].includes(action) || !Object.hasOwn(CHECKS, provider ?? '')) return json(400, { ok: false, message: 'Unknown action or provider.' });
+  if (SHOPIFY_ACTIONS.includes(action) && provider !== 'shopify') return json(400, { ok: false, message: 'That action is only for Shopify.' });
 
   const { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY } = deps.env;
   const authorization = req.headers.get('Authorization') ?? '';
@@ -124,8 +216,9 @@ export async function handle(req, deps) {
 
   // Only the Shop Owner may run this: ask the database, as the caller, whether they are one.
   const asCaller = deps.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authorization } } });
-  const { data: isOwner, error: ownerError } = await asCaller.rpc('is_owner');
-  if (ownerError || isOwner !== true) return json(403, { ok: false, message: 'Only the shop owner can test integrations.' });
+  // Pushing a stock change to Shopify happens on every sale, so any staff member may do that one; everything else is owner-only.
+  const { data: allowed, error: ownerError } = await asCaller.rpc(action === 'shopify-set-stock' ? 'is_staff' : 'is_owner');
+  if (ownerError || allowed !== true) return json(403, { ok: false, message: action === 'shopify-set-stock' ? 'Sign in as a member of the shop first.' : 'Only the shop owner can test integrations.' });
 
   // Every shop has its own connections: only ever touch the caller's shop.
   const { data: shopId, error: shopError } = await asCaller.rpc('current_shop_id');
@@ -139,6 +232,21 @@ export async function handle(req, deps) {
   if (!row || !secretRow || row.status === 'disconnected') return json(200, { ok: false, status: 'disconnected', message: 'Nothing is saved for this integration yet.' });
 
   const credentials = { settings: row.settings ?? {}, secrets: secretRow.secrets ?? {} };
+
+  // Shopify reads/writes below don't touch the saved connection status.
+  if (SHOPIFY_ACTIONS.includes(action)) {
+    try {
+      const page = action === 'shopify-products' ? await listShopifyProducts(credentials, deps.fetch, body.cursor)
+        : action === 'shopify-locations' ? await listShopifyLocations(credentials, deps.fetch)
+        : action === 'shopify-set-stock' ? await setShopifyStock(credentials, deps.fetch, body)
+        : await registerShopifyWebhooks(credentials, deps.fetch, `${SUPABASE_URL}/functions/v1/shopify-webhook`);
+      if (!page.ok) page.message = redact(page.message, credentials.secrets);
+      return json(200, page);
+    } catch (err) {
+      return json(200, { ok: false, message: err?.name === 'TimeoutError' ? 'Shopify took too long to answer. Try again.' : 'Couldn\'t reach Shopify. Check the connection and try again.' });
+    }
+  }
+
   let result;
   try {
     result = action === 'test-sms' ? (provider === 'hubtel' ? await sendHubtelSms(credentials, deps.fetch, body.to) : { ok: false, message: 'Test SMS is only for Hubtel.' })

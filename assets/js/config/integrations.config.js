@@ -34,8 +34,8 @@ export const INTEGRATIONS = [
   },
   {
     key: 'shopify', name: 'Shopify', icon: 'fa-shopify', style: 'fa-brands',
-    summary: 'Online orders and stock levels.',
-    where: 'Shopify admin → Settings → Apps and sales channels → Develop apps → your app → API credentials (Admin API access token)',
+    summary: 'Import your Shopify products and variants into OneDesk.',
+    where: 'Shopify admin → Settings → Apps and sales channels → Develop apps → your app → API credentials (Admin API access token). Under Configuration, give the app the read_products Admin API scope so products can be imported.',
     docsUrl: 'https://help.shopify.com/en/manual/apps/app-types/custom-apps',
     fields: [
       {
@@ -44,6 +44,8 @@ export const INTEGRATIONS = [
         pattern: /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/, patternHint: 'The store address looks like your-store.myshopify.com (not your custom domain).',
       },
       { key: 'accessToken', label: 'Admin API access token', secret: true, placeholder: 'shpat_…', pattern: /^shp[a-z]{2}_[A-Za-z0-9]+$/, patternHint: 'A Shopify Admin API token starts with shpat_.' },
+      // Only needed for live two-way sync: Shopify signs every order notification with this, so fake ones can be refused.
+      { key: 'apiSecret', label: 'API secret key (optional — for live orders)', secret: true, optional: true, placeholder: 'From the same API credentials page', pattern: /^[A-Za-z0-9_-]{16,}$/, patternHint: 'Copy the API secret key from the app\'s API credentials page.' },
     ],
   },
   {
@@ -88,6 +90,7 @@ export function validateIntegrationInput(integration, values, saved = {}) {
   for (const field of integration.fields) {
     const raw = field.normalize ? field.normalize(values[field.key]) : trimmed(values[field.key]);
     if (!raw) {
+      if (field.optional) continue;                                   // may be left empty
       if (field.secret && saved[field.key]) continue;                 // left blank on purpose: keep the saved key
       errors[field.key] = `${field.label} is required.`;
       continue;

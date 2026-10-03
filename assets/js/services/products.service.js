@@ -62,6 +62,7 @@ export function generateVariants(options, existing = [], defaultPrice = 0, { kee
     return {
       title: vals.join(' / '), option1: vals[0], option2: vals[1] ?? null, option3: vals[2] ?? null,
       price: old?.price ?? defaultPrice, sku: old?.sku ?? '', barcode: old?.barcode ?? '', stock: old?.stock ?? 0,
+      ...(old?.shopifyId ? { shopifyId: old.shopifyId, inventoryItemId: old.inventoryItemId } : {}), // keep the link to the Shopify variant
     };
   });
 }
@@ -104,6 +105,7 @@ export function normalizeVariants(variants = []) {
       sku: String(v.sku ?? '').trim(),
       barcode: String(v.barcode ?? '').trim(),
       stock: Math.max(0, Math.floor(Number(v.stock) || 0)),
+      ...(v.shopifyId ? { shopifyId: String(v.shopifyId), inventoryItemId: String(v.inventoryItemId ?? '') } : {}),
     };
   });
 }

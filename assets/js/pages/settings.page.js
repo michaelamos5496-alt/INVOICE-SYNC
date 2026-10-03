@@ -15,6 +15,9 @@ import { STORAGE_KEYS } from '../config/constants.js';
 import { CLOUD_SYNC } from '../config/supabase.config.js';
 import { readLocalSummary, uploadLocalDataToCloud } from '../services/migrate.service.js';
 import { INTEGRATIONS, integrationByKey } from '../config/integrations.config.js';
+import { importShopifyProducts } from '../services/shopify-sync.service.js';
+import { getActorName } from '../services/auth.service.js';
+import { fetchShopifyLocations, registerShopifyWebhooks } from '../services/integrations.service.js';
 import { integrationsSupported, loadStatuses, connect, testConnection, disconnect, sendTestSms } from '../services/integrations.service.js';
 import { amIOwner } from '../services/staff.service.js';
 import { escapeHTML } from '../utils/helpers.js';
@@ -192,6 +195,107 @@ function renderTaxCurrencyForm() {
 // ---------------------------------------------------------------------
 // Integrations
 // ---------------------------------------------------------------------
+/** Settings → Integrations → Shopify → Two-way sync: send stock to Shopify, and turn on live orders from Shopify. */
+function openShopifyTwoWayModal() {
+  const current = getSettings();
+  const el = modal.open({
+    title: 'Two-way Shopify sync', size: 'md',
+    bodyHTML: `<div class="space-y-6">
+      <section class="space-y-3">
+        <h3 class="font-display font-semibold text-sm">1 · Send OneDesk stock to Shopify</h3>
+        <p class="text-xs text-[var(--text-muted)]">When stock changes here (a sale at the till, a stock count, a restock), the new number is sent to the Shopify location you choose. Products with variants aren't sent — the till sells a product, not a variant, so OneDesk can't tell which variant's count to lower. Shopify → OneDesk (below) does handle variants.</p>
+        <div>
+          <label class="field-label" for="tw-location">Shopify location</label>
+          <select id="tw-location" class="select" disabled><option>Loading locations…</option></select>
+          <p id="tw-location-msg" class="field-hint"></p>
+        </div>
+        <label class="flex items-center gap-2 text-sm"><input id="tw-push" type="checkbox" class="checkbox" ${current.shopifyPushStock ? 'checked' : ''} /> Send OneDesk stock changes to Shopify</label>
+        <button type="button" id="tw-save" class="btn btn-primary btn-sm"><i class="fa-solid fa-check"></i> Save</button>
+      </section>
+      <section class="space-y-3 pt-5 border-t" style="border-color: var(--border-subtle)">
+        <h3 class="font-display font-semibold text-sm">2 · Live orders from Shopify</h3>
+        <p class="text-xs text-[var(--text-muted)]">New Shopify orders appear under Online Orders and take their stock off OneDesk; cancelled orders put it back. Needs the <strong>shopify-webhook</strong> function deployed (README → Integrations), the API secret key saved under Update keys, and the app's <code>read_orders</code> scope. Orders only match products imported with Sync products.</p>
+        <button type="button" id="tw-webhooks" class="btn btn-secondary btn-sm"><i class="fa-solid fa-bolt"></i> Turn on live orders</button>
+        <p id="tw-webhooks-msg" class="text-xs" role="status"></p>
+      </section>
+    </div>`,
+  });
+
+  const select = el.querySelector('#tw-location');
+  const message = el.querySelector('#tw-location-msg');
+  fetchShopifyLocations().then((locations) => {
+    select.innerHTML = `<option value="">— choose a location —</option>${locations.map((l) => `<option value="${escapeHTML(l.id)}" ${l.id === current.shopifyLocationId ? 'selected' : ''}>${escapeHTML(l.name)}</option>`).join('')}`;
+    select.disabled = false;
+  }).catch((err) => {
+    select.innerHTML = '<option value="">Couldn\'t load locations</option>';
+    message.textContent = err.message;
+    message.className = 'field-hint text-danger-500';
+  });
+
+  el.querySelector('#tw-save').addEventListener('click', async () => {
+    const push = el.querySelector('#tw-push').checked;
+    if (push && !select.value) { toast.danger('Choose a Shopify location first.'); return; }
+    await saveSettings({ shopifyLocationId: select.value, shopifyPushStock: push }, push ? 'OneDesk stock changes will now be sent to Shopify.' : 'Sending stock to Shopify is off.');
+  });
+
+  el.querySelector('#tw-webhooks').addEventListener('click', async (e) => {
+    const out = el.querySelector('#tw-webhooks-msg');
+    e.currentTarget.disabled = true;
+    out.textContent = 'Asking Shopify…'; out.className = 'text-xs text-[var(--text-secondary)]';
+    try {
+      const result = await registerShopifyWebhooks();
+      out.textContent = result.message; out.className = 'text-xs text-success-500';
+    } catch (err) {
+      out.textContent = err.message; out.className = 'text-xs text-danger-500';
+    } finally { e.currentTarget.disabled = false; }
+  });
+}
+
+/** Settings → Integrations → Shopify → Sync products: pull the store's products and variants into OneDesk. */
+function openShopifySyncModal() {
+  const el = modal.open({
+    title: 'Sync products from Shopify', size: 'sm',
+    bodyHTML: `<div id="shopify-sync-body" class="space-y-4">
+      <p class="text-sm text-[var(--text-secondary)]">Imports every product from your Shopify store with its variants, prices, SKUs, barcodes and first photo. Running it again updates products already imported instead of duplicating them.</p>
+      <label class="flex items-start gap-2 text-sm">
+        <input id="shopify-update-stock" type="checkbox" class="checkbox mt-0.5" />
+        <span>Also replace OneDesk's stock counts with Shopify's for products that already exist<br />
+          <span class="text-xs text-[var(--text-muted)]">Off by default, so in-store sales you've recorded aren't overwritten. New products always start with Shopify's counts.</span></span>
+      </label>
+      <div class="flex justify-end gap-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-modal-close>Cancel</button>
+        <button type="button" id="shopify-sync-start" class="btn btn-primary btn-sm"><i class="fa-solid fa-cloud-arrow-down"></i> Start sync</button>
+      </div></div>`,
+  });
+  el.querySelector('#shopify-sync-start').addEventListener('click', async () => {
+    const updateStock = el.querySelector('#shopify-update-stock').checked;
+    const body = el.querySelector('#shopify-sync-body');
+    body.innerHTML = `<div role="status" aria-live="polite" class="space-y-3">
+      <p id="shopify-sync-phase" class="text-sm text-[var(--text-secondary)]">Starting…</p>
+      <div class="h-2 rounded-full overflow-hidden" style="background: var(--surface-sunken)"><div id="shopify-sync-bar" class="h-full" style="width:8%; background: var(--color-primary-500); transition: width 200ms"></div></div>
+      <p class="text-xs text-[var(--text-muted)]">Keep this window open until it finishes.</p></div>`;
+    try {
+      const result = await importShopifyProducts({
+        updateStock, actor: getActorName(),
+        onProgress: ({ phase, done, total }) => {
+          const label = body.querySelector('#shopify-sync-phase');
+          if (!label) return;
+          label.textContent = total ? `${phase}… ${done} of ${total}` : (done ? `${phase}… ${done} found` : `${phase}…`);
+          body.querySelector('#shopify-sync-bar').style.width = `${total ? Math.max(8, Math.round((done / total) * 100)) : 8}%`;
+        },
+      });
+      body.innerHTML = `<div class="space-y-3">
+        <p class="text-sm font-medium"><i class="fa-solid fa-circle-check text-success-500"></i> Sync finished</p>
+        <p class="text-sm text-[var(--text-secondary)]">${result.created} new, ${result.updated} updated${result.skipped.length ? `, ${result.skipped.length} skipped` : ''}.</p>
+        ${result.skipped.length ? `<ul class="text-xs text-[var(--text-muted)] list-disc pl-4 max-h-32 overflow-y-auto space-y-1">${result.skipped.map((m) => `<li>${escapeHTML(m)}</li>`).join('')}</ul>` : ''}
+        <div class="flex justify-end"><a href="products.html" class="btn btn-primary btn-sm">View products</a></div></div>`;
+    } catch (err) {
+      body.innerHTML = `<div class="space-y-3"><p class="alert alert-danger" role="alert"><i class="fa-solid fa-circle-exclamation mt-0.5"></i><span>${escapeHTML(err.message)}</span></p>
+        <div class="flex justify-end"><button type="button" class="btn btn-secondary btn-sm" data-modal-close>Close</button></div></div>`;
+    }
+  });
+}
+
 const STATUS_BADGES = {
   disconnected: { cls: 'badge-neutral', label: 'Not connected' },
   saved: { cls: 'badge-warning', label: 'Saved — not verified' },
@@ -248,6 +352,7 @@ async function renderIntegrations() {
             ${!connected
               ? `<button class="btn btn-primary btn-sm" data-action="connect" ${supported && isOwner ? '' : 'disabled'} ${supported ? '' : 'title="Turn on live sharing first"'}><i class="fa-solid fa-plug"></i> Connect</button>`
               : (isOwner ? `
+                ${integration.key === 'shopify' ? '<button class="btn btn-primary btn-sm" data-action="sync-products"><i class="fa-solid fa-cloud-arrow-down"></i> Sync products</button><button class="btn btn-secondary btn-sm" data-action="two-way"><i class="fa-solid fa-arrows-rotate"></i> Two-way sync</button>' : ''}
                 <button class="btn btn-secondary btn-sm" data-action="test"><i class="fa-solid fa-rotate"></i> Test connection</button>
                 ${integration.smsTest ? '<button class="btn btn-secondary btn-sm" data-action="sms"><i class="fa-solid fa-message"></i> Send test SMS</button>' : ''}
                 <button class="btn btn-secondary btn-sm" data-action="connect"><i class="fa-solid fa-key"></i> Update keys</button>
@@ -260,6 +365,8 @@ async function renderIntegrations() {
     const key = card.dataset.integration;
     card.querySelector('[data-action="connect"]')?.addEventListener('click', () => openConnectModal(key, statuses.get(key)));
     card.querySelector('[data-action="test"]')?.addEventListener('click', (e) => runTest(key, e.currentTarget));
+    card.querySelector('[data-action="sync-products"]')?.addEventListener('click', openShopifySyncModal);
+    card.querySelector('[data-action="two-way"]')?.addEventListener('click', openShopifyTwoWayModal);
     card.querySelector('[data-action="sms"]')?.addEventListener('click', () => openSmsModal());
     card.querySelector('[data-action="disconnect"]')?.addEventListener('click', () => confirmDisconnect(key));
   });

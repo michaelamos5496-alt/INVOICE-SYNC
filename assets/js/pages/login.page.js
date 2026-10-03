@@ -346,12 +346,14 @@ async function submitApplication(event) {
   event.preventDefault();
   const name = $('apply-name').value.trim();
   const email = $('apply-email').value.trim();
+  const whatsapp = $('apply-whatsapp').value.trim();
   const message = $('apply-message').value.trim();
   const error = $('apply-error');
   const fail = (text) => { error.textContent = text; error.hidden = false; };
 
   if (!name) return fail('Please enter your name.');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('Please enter a valid contact email.');
+  if (whatsapp && !/^\+?[\d\s().-]{7,20}$/.test(whatsapp)) return fail('That WhatsApp number doesn\'t look right. Include the country code, e.g. +233 54 000 0000.');
   error.hidden = true;
 
   // Bots fill the hidden field or submit instantly; pretend it worked and send nothing.
@@ -365,7 +367,7 @@ async function submitApplication(event) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
-        name, email, message: message || 'Hello TheImageDept, I\'d like to request an account on OneDesk.',
+        name, email, whatsapp: whatsapp || '(not given)', message: message || 'Hello TheImageDept, I\'d like to request an account on OneDesk.',
         _subject: `OneDesk account request from ${name}`,
         _replyto: email, _template: 'table', _captcha: 'false',
       }),
